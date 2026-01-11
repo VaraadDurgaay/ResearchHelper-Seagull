@@ -1,31 +1,44 @@
 """
-# Pydantic Schemas
-
-## What it does:
-Pydantic models for request/response validation and serialization. Defines the
-shape of data exchanged between frontend and backend.
-
-## How it works:
-- Defines Pydantic models for all API requests and responses
-- Provides validation and serialization
-- Used by FastAPI for automatic validation and OpenAPI docs
-
-## What to include:
-- Request schemas:
-  - PaperUploadRequest, DOIImportRequest
-  - ChatMessageRequest, ClaimVerifyRequest, BlueprintRequest, etc.
-  
-- Response schemas:
-  - PaperResponse, PaperListResponse
-  - ChatResponse, MessageResponse
-  - VerificationResult, Blueprint, MethodDetails, etc.
-  
-- Common schemas:
-  - Citation, Chunk, Embedding
-  - PaginationParams, ErrorResponse
-  
-- All schemas should match TypeScript types in frontend
-- Use Field() for validation rules
-- Use Optional for nullable fields
+Pydantic Schemas for API requests and responses
 """
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+from enum import Enum
 
+
+class PaperStatus(str, Enum):
+    PROCESSING = "processing"
+    READY = "ready"
+    ERROR = "error"
+
+
+class PaperBase(BaseModel):
+    title: str
+    authors: List[str] = Field(default_factory=list)
+    abstract: Optional[str] = None
+    doi: Optional[str] = None
+    publication_date: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class PaperResponse(PaperBase):
+    id: str
+    pdf_path: Optional[str] = None
+    pdf_url: Optional[str] = None
+    upload_date: datetime
+    workspace_id: str
+    user_id: str
+    status: PaperStatus
+    
+    class Config:
+        from_attributes = True
+
+
+class PaperListResponse(BaseModel):
+    papers: List[PaperResponse]
+    total: int
+
+
+class ErrorResponse(BaseModel):
+    detail: str

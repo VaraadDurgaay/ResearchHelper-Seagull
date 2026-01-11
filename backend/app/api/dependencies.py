@@ -1,31 +1,29 @@
 """
-# API Dependencies
-
-## What it does:
-FastAPI dependency functions for common dependencies used across API routes:
-authentication, database session, current user, current workspace.
-
-## How it works:
-- Defines dependency functions using FastAPI Depends
-- Provides reusable dependencies for routes
-- Handles authentication and authorization
-- Provides database session management
-
-## What to include:
-- get_db() - Database session dependency
-  - Yields database session
-  - Handles session cleanup
-  
-- get_current_user() - Current user dependency
-  - Validates authentication token
-  - Returns current user from database
-  - Raises 401 if not authenticated
-  
-- get_current_workspace() - Current workspace dependency
-  - Gets workspace from user's active workspace or request
-  - Returns workspace object
-  - Raises 404 if workspace not found
-  
-- Optional: Role-based access control dependencies
+API Dependencies
 """
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import Generator
+import os
+import uuid
 
+# For now, we'll use a simple in-memory approach
+# TODO: Replace with actual database session when DB is set up
+def get_db() -> Generator:
+    """Dummy database dependency - returns None for now"""
+    # This will be replaced with actual DB session later
+    yield None
+
+
+def get_current_user_id() -> str:
+    """Get current user ID - placeholder implementation"""
+    # TODO: Implement actual authentication
+    # For now, return a dummy user ID
+    return "default-user-id"
+
+
+def get_current_workspace_id() -> str:
+    """Get current workspace ID - placeholder implementation"""
+    # TODO: Implement actual workspace logic
+    # For now, return a dummy workspace ID
+    return "default-workspace-id"

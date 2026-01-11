@@ -1,27 +1,41 @@
 """
-# FastAPI Application Entry Point
-
-## What it does:
-Main FastAPI application entry point. Initializes the FastAPI app, configures middleware,
-registers routers, and sets up the application lifecycle.
-
-## How it works:
-- Creates FastAPI app instance
-- Configures CORS for frontend
-- Registers API routers (v1)
-- Sets up middleware (logging, error handling)
-- Configures startup/shutdown events
-- Runs the application
-
-## What to include:
-- FastAPI app instance creation
-- CORS configuration (allow frontend origin)
-- API router registration (from app.api.v1.router)
-- Middleware setup (logging, request ID, error handling)
-- Startup event: database initialization, vector DB connection
-- Shutdown event: cleanup connections
-- Root endpoint ("/")
-- Health check endpoint ("/health")
-- uvicorn run configuration (if running directly)
+FastAPI Application Entry Point
 """
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.api.v1.router import api_router
+import os
 
+# Create uploads directory if it doesn't exist
+os.makedirs(settings.upload_dir, exist_ok=True)
+
+app = FastAPI(
+    title="ResearchHelper API",
+    version="1.0.0",
+    description="API for ResearchHelper - PDF paper management and RAG chat"
+)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API router
+app.include_router(api_router, prefix="/api/v1")
+
+@app.get("/")
+def root():
+    return {"message": "ResearchHelper API", "version": "1.0.0"}
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

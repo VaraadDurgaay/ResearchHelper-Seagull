@@ -1,26 +1,30 @@
 """
-# Configuration Module
-
-## What it does:
-Centralized configuration management using Pydantic Settings. Loads environment variables
-and provides typed configuration for the application.
-
-## How it works:
-- Uses pydantic-settings to load environment variables
-- Defines Settings class with all configuration options
-- Provides default values and validation
-- Exports settings instance
-
-## What to include:
-- Database configuration: DATABASE_URL, DB_POOL_SIZE, etc.
-- Vector DB configuration: VECTOR_DB_TYPE (Pinecone/Qdrant), API keys, index names
-- LLM configuration: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, default provider
-- Embedding configuration: EMBEDDING_MODEL, embedding dimensions
-- Application settings: SECRET_KEY, DEBUG, ENVIRONMENT
-- CORS settings: ALLOWED_ORIGINS
-- File upload settings: MAX_UPLOAD_SIZE, UPLOAD_DIR
-- DOI fetching settings: DOI_API_KEY (optional)
-- Settings class with validation
-- Settings instance export
+Configuration Module
 """
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
 
+
+class Settings(BaseSettings):
+    # Database
+    database_url: str = "sqlite:///./researchhelper.db"
+    
+    # Application
+    secret_key: str = "dev-secret-key-change-in-production"
+    debug: bool = True
+    environment: str = "development"
+    
+    # CORS
+    allowed_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    
+    # File Upload
+    max_upload_size: int = 50 * 1024 * 1024  # 50MB
+    upload_dir: str = "./uploads"
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
+
+
+settings = Settings()
