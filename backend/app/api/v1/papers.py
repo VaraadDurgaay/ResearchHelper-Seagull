@@ -13,6 +13,10 @@ from pathlib import Path
 from app.models.schemas import PaperResponse, PaperListResponse, PaperStatus
 from app.api.dependencies import get_current_user_id, get_current_workspace_id
 from app.config import settings
+from app.services.ingestion_service import ingest_pdf
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -59,33 +63,22 @@ async def upload_paper(
         saved_filename = f"{paper_id}{file_extension}"
         file_path = os.path.join(settings.upload_dir, saved_filename)
         
-        # Save file
+        # Save file temporarily
         os.makedirs(settings.upload_dir, exist_ok=True)
         with open(file_path, "wb") as buffer:
             buffer.write(file_content)
         
-        # For now, extract basic metadata from filename
-        # TODO: Implement actual PDF parsing to extract title, authors, etc.
-        title = Path(file.filename).stem  # Use filename without extension as title
-        
-        # Create response
-        paper_response = PaperResponse(
-            id=paper_id,
-            title=title,
-            authors=[],  # TODO: Extract from PDF
-            abstract=None,  # TODO: Extract from PDF
+        # Process PDF: extract text, chunk, generate embeddings, store in vector DB
+        logger.info(f"Starting PDF ingestion for paper {paper_id}")
+        paper_response = ingest_pdf(
             pdf_path=file_path,
-            pdf_url=None,  # TODO: Generate URL if serving files
-            upload_date=datetime.utcnow(),
+            paper_id=paper_id,
             workspace_id=workspace_id,
             user_id=user_id,
-            status=PaperStatus.READY,  # TODO: Set to PROCESSING and process in background
-            metadata={
-                "original_filename": file.filename,
-                "file_size": file_size,
-            }
+            original_filename=file.filename
         )
         
+        logger.info(f"Successfully processed PDF for paper {paper_id}")
         return paper_response
         
     except Exception as e:

@@ -21,9 +21,18 @@ class Settings(BaseSettings):
     max_upload_size: int = 50 * 1024 * 1024  # 50MB
     upload_dir: str = "./uploads"
     
+    # Vector Database
+    vector_db_path: str = "./vector_db/faiss.index"
+    embedding_dimension: int = 384  # Dimension for all-MiniLM-L6-v2
+    
+    # Chunking
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore"  # Ignore extra fields from .env file
     )
 
 

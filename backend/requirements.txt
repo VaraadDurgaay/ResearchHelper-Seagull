@@ -15,6 +15,7 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
 # Vector Database (choose one or multiple)
+faiss-cpu>=1.7.4  # FAISS for local vector storage
 # pinecone-client>=2.2.0
 # qdrant-client>=1.7.0
 # weaviate-client>=3.25.0

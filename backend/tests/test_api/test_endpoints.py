@@ -64,9 +64,10 @@ class TestPapersEndpoints:
         assert "deleted" in data["message"].lower()
     
     def test_upload_paper_success(self):
-        """Test POST /api/v1/papers/ - upload a valid PDF file"""
-        # Create a temporary PDF file for testing
-        test_pdf_content = b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n>>\nendobj\nxref\n0 1\ntrailer\n<<\n/Root 1 0 R\n>>\nstartxref\n9\n%%EOF"
+        """Test POST /api/v1/papers/ - upload a valid PDF file and process it"""
+        # Create a minimal valid PDF file for testing
+        # This is a very basic PDF structure
+        test_pdf_content = b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n3 0 obj\n<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 612 792]\n/Contents 4 0 R\n/Resources <<\n/Font <<\n/F1 <<\n/Type /Font\n/Subtype /Type1\n/BaseFont /Helvetica\n>>\n>>\n>>\n>>\nendobj\n4 0 obj\n<<\n/Length 44\n>>\nstream\nBT\n/F1 12 Tf\n100 700 Td\n(Test PDF Content) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000256 00000 n \ntrailer\n<<\n/Size 5\n/Root 1 0 R\n>>\nstartxref\n350\n%%EOF"
         
         files = {
             "file": ("test_paper.pdf", test_pdf_content, "application/pdf")
@@ -87,12 +88,17 @@ class TestPapersEndpoints:
         assert "metadata" in data
         
         # Verify values
-        assert data["title"] == "test_paper"
         assert data["status"] == "ready"
         assert data["user_id"] == "default-user-id"
         assert data["workspace_id"] == "default-workspace-id"
         assert data["metadata"]["original_filename"] == "test_paper.pdf"
         assert data["metadata"]["file_size"] > 0
+        
+        # Verify PDF processing metadata
+        assert "num_pages" in data["metadata"]
+        assert "num_chunks" in data["metadata"]
+        assert data["metadata"]["num_pages"] > 0
+        assert data["metadata"]["num_chunks"] > 0
         
         # Verify file was saved
         if data["pdf_path"] and os.path.exists(data["pdf_path"]):

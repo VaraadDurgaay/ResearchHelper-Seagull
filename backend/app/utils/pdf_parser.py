@@ -1,30 +1,112 @@
 """
-# PDF Parser Utility
-
-## What it does:
-Extracts text and metadata from PDF files. Handles different PDF formats and
-extracts page-wise text with page numbers.
-
-## How it works:
-- Uses PDF parsing library (PyPDF2, pdfplumber, or pymupdf)
-- Extracts text page by page
-- Extracts metadata (title, authors, etc.)
-- Handles errors (corrupted PDFs, encrypted PDFs)
-
-## What to include:
-- parse_pdf(pdf_path: str) -> PDFData
-  - Extracts text from PDF
-  - Returns: pages (List[Page]), metadata (PDFMetadata)
-  
-- Page: page_number, text, images (optional)
-- PDFMetadata: title, authors, abstract, publication_date, doi
-  
-- extract_metadata(pdf_path: str) -> PDFMetadata
-  - Extracts metadata from PDF
-  - Uses PDF metadata or first page parsing
-  
-- Handles different PDF libraries
-- Error handling for corrupted/encrypted PDFs
-- Text cleaning (remove extra whitespace, normalize)
+PDF Parser Utility
+Extracts text and metadata from PDF files using PyPDF2.
 """
+from typing import List, Optional, Dict, Any
+from dataclasses import dataclass
+from pathlib import Path
+import PyPDF2
+import logging
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Page:
+    """Represents a single page from a PDF"""
+    page_number: int
+    text: str
+
+
+@dataclass
+class PDFMetadata:
+    """PDF metadata"""
+    title: Optional[str] = None
+    authors: Optional[List[str]] = None
+    abstract: Optional[str] = None
+    publication_date: Optional[str] = None
+    doi: Optional[str] = None
+
+
+@dataclass
+class PDFData:
+    """Complete PDF data structure"""
+    pages: List[Page]
+    metadata: PDFMetadata
+
+
+def parse_pdf(pdf_path: str) -> PDFData:
+    """
+    Extract text from PDF file page by page.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        PDFData containing pages and metadata
+        
+    Raises:
+        Exception: If PDF cannot be read or is corrupted
+    """
+    pages = []
+    metadata = PDFMetadata()
+    
+    try:
+        with open(pdf_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            
+            # Extract metadata from PDF
+            pdf_info = pdf_reader.metadata
+            if pdf_info:
+                if pdf_info.title:
+                    metadata.title = pdf_info.title
+                if pdf_info.author:
+                    # Author can be a string or list
+                    if isinstance(pdf_info.author, str):
+                        metadata.authors = [pdf_info.author]
+                    elif isinstance(pdf_info.author, list):
+                        metadata.authors = pdf_info.author
+                if pdf_info.subject:
+                    # Sometimes abstract is in subject
+                    metadata.abstract = pdf_info.subject
+            
+            # Extract text from each page
+            for page_num, page in enumerate(pdf_reader.pages, start=1):
+                try:
+                    text = page.extract_text()
+                    # Clean up text - remove excessive whitespace
+                    text = ' '.join(text.split())
+                    pages.append(Page(page_number=page_num, text=text))
+                except Exception as e:
+                    logger.warning(f"Error extracting text from page {page_num}: {str(e)}")
+                    # Add empty page if extraction fails
+                    pages.append(Page(page_number=page_num, text=""))
+            
+            # If no title in metadata, try to extract from first page
+            if not metadata.title and pages:
+                first_page_text = pages[0].text
+                # Try to find title in first few lines
+                lines = first_page_text.split('\n')[:5]
+                if lines:
+                    metadata.title = lines[0].strip()[:200]  # Limit title length
+                    
+    except PyPDF2.errors.PdfReadError as e:
+        raise Exception(f"Error reading PDF file: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error parsing PDF: {str(e)}")
+    
+    return PDFData(pages=pages, metadata=metadata)
+
+
+def extract_metadata(pdf_path: str) -> PDFMetadata:
+    """
+    Extract only metadata from PDF file.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        PDFMetadata object
+    """
+    pdf_data = parse_pdf(pdf_path)
+    return pdf_data.metadata
