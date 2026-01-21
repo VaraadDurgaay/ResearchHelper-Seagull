@@ -7,8 +7,8 @@ import { PDFUploader } from "@/components/pdf/PDFUploader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { lookupDois } from "@/lib/api/doi";
-import { Loader2, Link as LinkIcon } from "lucide-react";
+import { importDoi, lookupDois } from "@/lib/api/doi";
+import { Loader2, Link as LinkIcon, Download } from "lucide-react";
 import { sendMessage } from "@/lib/api/chat";
 
 export default function ChatPage() {
@@ -19,11 +19,14 @@ export default function ChatPage() {
       value: string;
       status: "idle" | "loading" | "success" | "error";
       url?: string;
+      pdfUrl?: string;
       title?: string;
       source?: string;
       error?: string;
+      importStatus?: "idle" | "loading" | "success" | "error";
+      importError?: string;
     }>
-  >([{ value: "", status: "idle" }]);
+  >([{ value: "", status: "idle", importStatus: "idle" }]);
   const [doiLoading, setDoiLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,8 +132,11 @@ export default function ChatPage() {
             ...entry,
             status: "success",
             url: result.url,
+            pdfUrl: result.pdf_url,
             title: result.title,
             source: result.source,
+            importStatus: "idle",
+            importError: undefined,
           };
         })
       );
@@ -169,13 +175,63 @@ export default function ChatPage() {
               value,
               status: "idle",
               url: undefined,
+              pdfUrl: undefined,
               title: undefined,
               source: undefined,
               error: undefined,
+              importStatus: "idle",
+              importError: undefined,
             }
           : item
       )
     );
+  };
+
+  const handleDoiImport = async (index: number) => {
+    const entry = doiEntries[index];
+    if (!entry || entry.importStatus === "loading") return;
+    const normalizeDoi = (doi: string) =>
+      doi
+        .trim()
+        .replace(/^doi:\s*/i, "")
+        .replace(/^https?:\/\/doi\.org\//i, "")
+        .trim();
+    const normalized = normalizeDoi(entry.value);
+    if (!normalized) return;
+
+    setDoiEntries(prev =>
+      prev.map((item, idx) =>
+        idx === index
+          ? { ...item, importStatus: "loading", importError: undefined }
+          : item
+      )
+    );
+
+    try {
+      await importDoi(normalized);
+      setDoiEntries(prev =>
+        prev.map((item, idx) =>
+          idx === index
+            ? { ...item, importStatus: "success", importError: undefined }
+            : item
+        )
+      );
+    } catch (error: any) {
+      setDoiEntries(prev =>
+        prev.map((item, idx) =>
+          idx === index
+            ? {
+                ...item,
+                importStatus: "error",
+                importError:
+                  error?.response?.data?.detail ||
+                  error?.message ||
+                  "Import failed",
+              }
+            : item
+        )
+      );
+    }
   };
 
   return (
@@ -232,23 +288,60 @@ export default function ChatPage() {
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     )}
                   </div>
-                  {entry.status === "success" && entry.url && (
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <LinkIcon className="h-3 w-3" />
-                      <a
-                        href={entry.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline"
-                      >
-                        {entry.title || entry.url}
-                      </a>
-                      {entry.source && <span>({entry.source})</span>}
-                    </div>
-                  )}
-                  {entry.status === "success" && !entry.url && (
-                    <div className="text-xs text-muted-foreground">
-                      Metadata found, but no landing page URL.
+                  {entry.status === "success" && (
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {entry.url ? (
+                        <div className="flex items-center gap-1">
+                          <LinkIcon className="h-3 w-3" />
+                          <a
+                            href={entry.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline"
+                          >
+                            {entry.title || entry.url}
+                          </a>
+                          {entry.source && <span>({entry.source})</span>}
+                        </div>
+                      ) : (
+                        <div>Metadata found, but no landing page URL.</div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDoiImport(index)}
+                          disabled={
+                            entry.importStatus === "loading" ||
+                            entry.importStatus === "success"
+                          }
+                        >
+                          {entry.importStatus === "loading" ? (
+                            <>
+                              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                              Importing...
+                            </>
+                          ) : entry.importStatus === "success" ? (
+                            "Imported"
+                          ) : (
+                            <>
+                              <Download className="mr-2 h-3 w-3" />
+                              One-click import
+                            </>
+                          )}
+                        </Button>
+                        {entry.importError && (
+                          <span className="text-xs text-destructive">
+                            {entry.importError}
+                          </span>
+                        )}
+                        {!entry.pdfUrl && entry.importStatus === "idle" && (
+                          <span className="text-xs text-muted-foreground">
+                            No open-access PDF found.
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                   {entry.status === "error" && (

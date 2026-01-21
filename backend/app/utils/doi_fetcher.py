@@ -62,13 +62,25 @@ def _fetch_openalex(doi: str) -> Optional[Dict[str, Any]]:
                 if name:
                     authors.append(name)
             landing_page_url = None
+            pdf_url = None
             primary_location = data.get("primary_location") or {}
             if primary_location.get("landing_page_url"):
                 landing_page_url = primary_location.get("landing_page_url")
+            if primary_location.get("pdf_url"):
+                pdf_url = primary_location.get("pdf_url")
+            best_oa_location = data.get("best_oa_location") or {}
+            if best_oa_location.get("landing_page_url") and not landing_page_url:
+                landing_page_url = best_oa_location.get("landing_page_url")
+            if best_oa_location.get("pdf_url"):
+                pdf_url = best_oa_location.get("pdf_url")
+            open_access = data.get("open_access") or {}
+            if open_access.get("oa_url") and not landing_page_url:
+                landing_page_url = open_access.get("oa_url")
             return {
                 "title": title,
                 "authors": authors,
                 "url": landing_page_url,
+                "pdf_url": pdf_url,
                 "source": "openalex",
             }
     except Exception:
@@ -94,6 +106,7 @@ def fetch_doi_metadata(doi: str) -> Dict[str, Any]:
             authors = openalex.get("authors") or authors
 
     url = None
+    pdf_url = None
     source = None
     if openalex and openalex.get("url"):
         url = openalex.get("url")
@@ -101,6 +114,8 @@ def fetch_doi_metadata(doi: str) -> Dict[str, Any]:
     elif crossref and crossref.get("url"):
         url = crossref.get("url")
         source = "crossref"
+    if openalex and openalex.get("pdf_url"):
+        pdf_url = openalex.get("pdf_url")
 
     if not title and not url:
         return {"doi": normalized, "error": "DOI not found"}
@@ -110,6 +125,7 @@ def fetch_doi_metadata(doi: str) -> Dict[str, Any]:
         "title": title,
         "authors": authors,
         "url": url,
+        "pdf_url": pdf_url,
         "source": source,
     }
 

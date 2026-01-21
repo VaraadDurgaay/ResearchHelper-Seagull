@@ -4,6 +4,7 @@
  * API functions for DOI lookup operations.
  */
 import { apiClient } from "./client";
+import type { Paper } from "@/types/paper";
 
 const API_BASE = "/api/v1/doi";
 
@@ -16,6 +17,7 @@ export interface DoiLookupResult {
   title?: string;
   authors: string[];
   url?: string;
+  pdf_url?: string;
   source?: string;
   error?: string;
 }
@@ -27,6 +29,18 @@ export interface DoiLookupResponse {
 export async function lookupDois(dois: string[]): Promise<DoiLookupResponse> {
   const response = await apiClient.post<DoiLookupResponse>(`${API_BASE}/lookup`, {
     dois,
+  });
+
+  return response.data;
+}
+
+export interface DoiImportResponse {
+  paper: Paper;
+}
+
+export async function importDoi(doi: string): Promise<DoiImportResponse> {
+  const response = await apiClient.post<DoiImportResponse>(`${API_BASE}/import`, {
+    doi,
   });
 
   return response.data;

@@ -91,9 +91,18 @@ class DoiLookupResult(BaseModel):
     title: Optional[str] = None
     authors: List[str] = Field(default_factory=list)
     url: Optional[str] = None
+    pdf_url: Optional[str] = None
     source: Optional[str] = None
     error: Optional[str] = None
 
 
 class DoiLookupResponse(BaseModel):
     results: List[DoiLookupResult]
+
+
+class DoiImportRequest(BaseModel):
+    doi: str
+
+
+class DoiImportResponse(BaseModel):
+    paper: PaperResponse
