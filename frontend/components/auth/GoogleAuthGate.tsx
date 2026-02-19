@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState} from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginWithGoogle, getCurrentUser } from "@/lib/api/auth";
 
@@ -17,17 +17,24 @@ export function GoogleAuthGate({ children }: GoogleAuthGateProps) {
   const initializedRef = useRef(false);
   const router = useRouter();
 
+  // Check if user is already logged in
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
     if (!token) {
+      localStorage.removeItem("auth_user");
       setAuthState("unauthenticated");
       return;
     }
 
+    // Verify token is still valid
     getCurrentUser()
-      .then(() => setAuthState("authenticated"))
+      .then((user) => {
+        localStorage.setItem("auth_user", JSON.stringify(user));
+        setAuthState("authenticated");
+      })
       .catch(() => {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
         setAuthState("unauthenticated");
       });
   }, []);
@@ -70,6 +77,7 @@ export function GoogleAuthGate({ children }: GoogleAuthGateProps) {
         try {
           const auth = await loginWithGoogle(response.credential);
           localStorage.setItem("auth_token", auth.access_token);
+          localStorage.setItem("auth_user", JSON.stringify(auth.user));
           setAuthState("authenticated");
           router.push("/chat");
         } catch (err: any) {
@@ -78,7 +86,7 @@ export function GoogleAuthGate({ children }: GoogleAuthGateProps) {
       },
     });
     window.google.accounts.id.renderButton(buttonRef.current, {
-      theme: "outline",
+      theme: "filled_black",
       size: "large",
       text: "continue_with",
       shape: "pill",
@@ -94,7 +102,7 @@ export function GoogleAuthGate({ children }: GoogleAuthGateProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background text-foreground">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-lg">
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold">Sign in to Seagull</h1>
+          <h1 className="text-xl font-semibold">Sign in to <span style={{ fontFamily: "var(--font-brand)" }}>Seagull</span></h1>
           <p className="text-sm text-muted-foreground">
             Continue with Google to access your workspace.
           </p>

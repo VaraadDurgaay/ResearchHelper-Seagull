@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList, type Message } from "@/components/chat/MessageList";
@@ -12,29 +12,42 @@ import { importDoi, lookupDois } from "@/lib/api/doi";
 import { Loader2, Link as LinkIcon, Download } from "lucide-react";
 import { sendMessage } from "@/lib/api/chat";
 import { getConversation } from "@/lib/api/conversations";
+import { useWorkspace } from "@/store/workspaceStore";
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { activeWorkspace } = useWorkspace();
+  const prevWorkspaceRef = useRef(activeWorkspace?.id);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [doiDialogOpen, setDoiDialogOpen] = useState(false);
-  const [doiEntries, setDoiEntries] = useState<
-    Array<{
-      value: string;
-      status: "idle" | "loading" | "success" | "error";
-      url?: string;
-      pdfUrl?: string;
-      title?: string;
-      source?: string;
-      error?: string;
-      importStatus?: "idle" | "loading" | "success" | "error";
-      importError?: string;
-    }>
-  >([{ value: "", status: "idle", importStatus: "idle" }]);
+  const [doiEntry, setDoiEntry] = useState<{
+    value: string;
+    status: "idle" | "loading" | "success" | "error";
+    url?: string;
+    pdfUrl?: string;
+    title?: string;
+    authors?: string[];
+    source?: string;
+    error?: string;
+    importStatus?: "idle" | "loading" | "success" | "error";
+    importError?: string;
+  }>({ value: "", status: "idle", importStatus: "idle" });
   const [doiLoading, setDoiLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // Clear chat when workspace changes
+  useEffect(() => {
+    const wsId = activeWorkspace?.id;
+    if (prevWorkspaceRef.current && wsId && wsId !== prevWorkspaceRef.current) {
+      setMessages([]);
+      setConversationId(null);
+      router.replace("/chat", { scroll: false });
+    }
+    prevWorkspaceRef.current = wsId;
+  }, [activeWorkspace?.id, router]);
 
   // Load conversation from URL param
   useEffect(() => {
@@ -43,7 +56,6 @@ export default function ChatPage() {
       setConversationId(convId);
       loadConversation(convId);
     } else if (!convId && conversationId) {
-      // New chat - clear messages
       setMessages([]);
       setConversationId(null);
     }
@@ -135,144 +147,114 @@ export default function ChatPage() {
         .replace(/^https?:\/\/doi\.org\//i, "")
         .trim();
 
-    const trimmedDois = doiEntries
-      .map(entry => normalizeDoi(entry.value))
-      .filter(Boolean);
-    if (trimmedDois.length === 0 || doiLoading) return;
+    const normalized = normalizeDoi(doiEntry.value);
+    if (!normalized || doiLoading) return;
 
     setDoiLoading(true);
-    setDoiEntries(prev =>
-      prev.map(entry =>
-        entry.value.trim()
-          ? { ...entry, status: "loading", error: undefined, url: undefined }
-          : entry
-      )
-    );
+    setDoiEntry(prev => ({
+      ...prev,
+      status: "loading",
+      error: undefined,
+      url: undefined,
+      pdfUrl: undefined,
+      title: undefined,
+      authors: undefined,
+      source: undefined,
+      importStatus: "idle",
+      importError: undefined,
+    }));
 
     try {
-      const response = await lookupDois(trimmedDois);
-      setDoiEntries(prev =>
-        prev.map(entry => {
-          const normalized = normalizeDoi(entry.value);
-          const result = response.results.find(item => item.doi === normalized);
-          if (!entry.value.trim()) return entry;
-          if (!result) {
-            return {
-              ...entry,
-              status: "error",
-              error: "No result found",
-            };
-          }
-          if (result.error) {
-            return {
-              ...entry,
-              status: "error",
-              error: result.error,
-            };
-          }
-          return {
-            ...entry,
-            status: "success",
-            url: result.url,
-            pdfUrl: result.pdf_url,
-            title: result.title,
-            source: result.source,
-            importStatus: "idle",
-            importError: undefined,
-          };
-        })
-      );
+      const response = await lookupDois([normalized]);
+      const result = response.results.find(item => item.doi === normalized);
+      if (!result) {
+        setDoiEntry(prev => ({
+          ...prev,
+          status: "error",
+          error: "No result found",
+        }));
+      } else if (result.error) {
+        setDoiEntry(prev => ({
+          ...prev,
+          status: "error",
+          error: result.error,
+        }));
+      } else {
+        setDoiEntry(prev => ({
+          ...prev,
+          status: "success",
+          url: result.url,
+          pdfUrl: result.pdf_url,
+          title: result.title,
+          authors: result.authors,
+          source: result.source,
+          importStatus: "idle",
+          importError: undefined,
+        }));
+      }
     } catch (error: any) {
-      setDoiEntries(prev =>
-        prev.map(entry =>
-          entry.value.trim()
-            ? {
-                ...entry,
-                status: "error",
-                error:
-                  error?.response?.data?.detail ||
-                  error?.message ||
-                  "DOI lookup failed",
-              }
-            : entry
-        )
-      );
+      setDoiEntry(prev => ({
+        ...prev,
+        status: "error",
+        error:
+          error?.response?.data?.detail ||
+          error?.message ||
+          "DOI lookup failed",
+      }));
     } finally {
       setDoiLoading(false);
     }
   };
 
-  const handleAddDoiField = () => {
-    setDoiEntries(prev =>
-      prev.length >= 5 ? prev : [...prev, { value: "", status: "idle" }]
-    );
+  const handleDoiChange = (value: string) => {
+    setDoiEntry(prev => ({
+      ...prev,
+      value,
+      status: "idle",
+      url: undefined,
+      pdfUrl: undefined,
+      title: undefined,
+      authors: undefined,
+      source: undefined,
+      error: undefined,
+      importStatus: "idle",
+      importError: undefined,
+    }));
   };
 
-  const handleDoiChange = (index: number, value: string) => {
-    setDoiEntries(prev =>
-      prev.map((item, idx) =>
-        idx === index
-          ? {
-              ...item,
-              value,
-              status: "idle",
-              url: undefined,
-              pdfUrl: undefined,
-              title: undefined,
-              source: undefined,
-              error: undefined,
-              importStatus: "idle",
-              importError: undefined,
-            }
-          : item
-      )
-    );
-  };
-
-  const handleDoiImport = async (index: number) => {
-    const entry = doiEntries[index];
-    if (!entry || entry.importStatus === "loading") return;
+  const handleDoiImport = async () => {
+    if (doiEntry.importStatus === "loading") return;
     const normalizeDoi = (doi: string) =>
       doi
         .trim()
         .replace(/^doi:\s*/i, "")
         .replace(/^https?:\/\/doi\.org\//i, "")
         .trim();
-    const normalized = normalizeDoi(entry.value);
+    const normalized = normalizeDoi(doiEntry.value);
     if (!normalized) return;
 
-    setDoiEntries(prev =>
-      prev.map((item, idx) =>
-        idx === index
-          ? { ...item, importStatus: "loading", importError: undefined }
-          : item
-      )
-    );
+    setDoiEntry(prev => ({
+      ...prev,
+      importStatus: "loading",
+      importError: undefined,
+    }));
 
     try {
       await importDoi(normalized);
-      setDoiEntries(prev =>
-        prev.map((item, idx) =>
-          idx === index
-            ? { ...item, importStatus: "success", importError: undefined }
-            : item
-        )
-      );
+      setDoiEntry(prev => ({
+        ...prev,
+        importStatus: "success",
+        importError: undefined,
+      }));
     } catch (error: any) {
-      setDoiEntries(prev =>
-        prev.map((item, idx) =>
-          idx === index
-            ? {
-                ...item,
-                importStatus: "error",
-                importError:
-                  error?.response?.data?.detail ||
-                  error?.message ||
-                  "Import failed",
-              }
-            : item
-        )
-      );
+      setDoiEntry(prev => ({
+        ...prev,
+        importStatus: "error",
+        importError:
+          error?.response?.data?.detail ||
+          error?.message ||
+          "Import failed",
+      }));
     }
   };
 
@@ -281,9 +263,9 @@ export default function ChatPage() {
       {/* Messages Area */}
       <MessageList messages={messages} isLoading={loading} />
       
-      {/* Input Area - Fixed at bottom */}
-      <div className="border-t bg-background/95 backdrop-blur">
-        <div className="max-w-3xl mx-auto p-4">
+      {/* Floating query dock */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
+        <div className="pointer-events-auto w-full max-w-2xl">
           <MessageInput 
             onSend={handleSend}
             onUploadPDF={handleUploadPDF}
@@ -313,100 +295,47 @@ export default function ChatPage() {
       <Dialog open={doiDialogOpen} onOpenChange={setDoiDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Input DOI</DialogTitle>
+            <DialogTitle>DOI Import</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleDoiSubmit} className="space-y-4">
-            <div className="space-y-3">
-              {doiEntries.map((entry, index) => (
-                <div key={index} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={entry.value}
-                      onChange={(e) => handleDoiChange(index, e.target.value)}
-                      placeholder="10.0000/abcd.12345"
-                      autoFocus={index === 0}
-                    />
-                    {entry.status === "loading" && (
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                  {entry.status === "success" && (
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      {entry.url ? (
-                        <div className="flex items-center gap-1">
-                          <LinkIcon className="h-3 w-3" />
-                          <a
-                            href={entry.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-primary underline"
-                          >
-                            {entry.title || entry.url}
-                          </a>
-                          {entry.source && <span>({entry.source})</span>}
-                        </div>
-                      ) : (
-                        <div>Metadata found, but no landing page URL.</div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDoiImport(index)}
-                          disabled={
-                            entry.importStatus === "loading" ||
-                            entry.importStatus === "success"
-                          }
-                        >
-                          {entry.importStatus === "loading" ? (
-                            <>
-                              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                              Importing...
-                            </>
-                          ) : entry.importStatus === "success" ? (
-                            "Imported"
-                          ) : (
-                            <>
-                              <Download className="mr-2 h-3 w-3" />
-                              One-click import
-                            </>
-                          )}
-                        </Button>
-                        {entry.importError && (
-                          <span className="text-xs text-destructive">
-                            {entry.importError}
-                          </span>
-                        )}
-                        {!entry.pdfUrl && entry.importStatus === "idle" && (
-                          <span className="text-xs text-muted-foreground">
-                            No open-access PDF found.
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            <div className="space-y-2">
+              <Input
+                value={doiEntry.value}
+                onChange={(e) => handleDoiChange(e.target.value)}
+                placeholder="https://doi.org/10.0000/abcd.12345"
+                autoFocus
+              />
+              {doiEntry.status === "success" && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {doiEntry.title && (
+                    <div className="font-medium text-foreground">{doiEntry.title}</div>
                   )}
-                  {entry.status === "error" && (
-                    <div className="text-xs text-destructive">
-                      {entry.error || "Lookup failed"}
+                  {doiEntry.authors && doiEntry.authors.length > 0 && (
+                    <div>{doiEntry.authors.slice(0, 3).join(", ")}</div>
+                  )}
+                  {doiEntry.url ? (
+                    <div className="flex items-center gap-1">
+                      <LinkIcon className="h-3 w-3" />
+                      <a
+                        href={doiEntry.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary underline"
+                      >
+                        {doiEntry.url}
+                      </a>
+                      {doiEntry.source && <span>({doiEntry.source})</span>}
                     </div>
+                  ) : (
+                    <div>Metadata found, but no landing page URL.</div>
                   )}
                 </div>
-              ))}
-              <div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleAddDoiField}
-                  disabled={doiEntries.length >= 5}
-                >
-                  +
-                </Button>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {doiEntries.length}/5
-                </span>
-              </div>
+              )}
+              {doiEntry.status === "error" && (
+                <div className="text-xs text-destructive">
+                  {doiEntry.error || "Lookup failed"}
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2">
               <Button
@@ -419,12 +348,53 @@ export default function ChatPage() {
               <Button
                 type="submit"
                 disabled={
-                  doiEntries.every(entry => !entry.value.trim()) || doiLoading
+                  !doiEntry.value.trim() || doiLoading
                 }
               >
+                {doiLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-green-500" />
+                )}
                 {doiLoading ? "Searching..." : "Submit"}
               </Button>
             </div>
+            {doiEntry.status === "success" && (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDoiImport}
+                  disabled={
+                    doiEntry.importStatus === "loading" ||
+                    doiEntry.importStatus === "success"
+                  }
+                >
+                  {doiEntry.importStatus === "loading" ? (
+                    <>
+                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      Importing...
+                    </>
+                  ) : doiEntry.importStatus === "success" ? (
+                    "Imported"
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-3 w-3" />
+                      Import
+                    </>
+                  )}
+                </Button>
+                {doiEntry.importError && (
+                  <span className="text-xs text-destructive">
+                    {doiEntry.importError}
+                  </span>
+                )}
+                {!doiEntry.pdfUrl && doiEntry.importStatus === "idle" && (
+                  <span className="text-xs text-muted-foreground">
+                    No open-access PDF found.
+                  </span>
+                )}
+              </div>
+            )}
           </form>
         </DialogContent>
       </Dialog>

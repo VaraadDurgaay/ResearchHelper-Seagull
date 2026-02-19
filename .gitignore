@@ -1,0 +1,31 @@
+# Cursor IDE
+.cursor/
+
+# Environment files (contain API keys and secrets)
+.env
+.env.*
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Uploaded files
+backend/uploads/
+
+# Vector DB local files
+backend/vector_db/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -76,7 +76,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 min-h-0">
+    <div className="flex-1 overflow-y-auto px-4 pt-6 pb-40 min-h-0">
       <div className="max-w-3xl mx-auto space-y-6">
         {messages.map((message) => (
           <div

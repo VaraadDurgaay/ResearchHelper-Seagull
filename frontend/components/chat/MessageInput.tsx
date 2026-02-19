@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Send, Plus, Upload, FileText } from "lucide-react";
+import { ArrowUp, Plus, Upload, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageInputProps {
@@ -56,14 +56,14 @@ export function MessageInput({
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
-      <div className="relative flex items-center gap-2 rounded-full border-0 bg-background/95 backdrop-blur-sm p-1.5 shadow-2xl">
+      <div className="relative flex items-center gap-2 rounded-2xl border border-border/80 bg-card/95 px-2 py-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl">
         <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-9 w-9 shrink-0 rounded-full hover:bg-accent transition-all"
+              className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-all"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -97,7 +97,7 @@ export function MessageInput({
                 }}
               >
                 <FileText className="h-4 w-4" />
-                Input DOI
+                DOI Import
               </Button>
             </div>
           </PopoverContent>
@@ -117,13 +117,14 @@ export function MessageInput({
           )}
           rows={1}
         />
+        <span className="hidden sm:inline-flex text-xs text-muted-foreground pr-1">Ctrl+I</span>
         <Button
           type="submit"
           disabled={disabled || !message.trim()}
           size="icon"
-          className="h-9 w-9 shrink-0 rounded-full"
+          className="h-9 w-9 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:bg-foreground/30"
         >
-          <Send className="h-4 w-4" />
+          <ArrowUp className="h-4 w-4" />
         </Button>
       </div>
     </form>

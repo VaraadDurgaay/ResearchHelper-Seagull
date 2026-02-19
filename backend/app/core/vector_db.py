@@ -70,13 +70,13 @@ class FAISSVectorDB:
         if self.index is None:
             self._initialize_index()
         
-        # Add vectors to index
+        # FAISS assigns sequential IDs starting from the current total.
+        # We must capture this BEFORE adding so metadata keys match positions.
+        start_id = self.index.ntotal
+        
         self.index.add(vectors_array)
         
-        # Store metadata
-        start_id = len(self.metadata)
         for i, (vector_id, metadata) in enumerate(zip(vector_ids, metadata_list)):
-            # FAISS assigns sequential IDs, so we map them to our vector_ids
             faiss_id = str(start_id + i)
             self.metadata[faiss_id] = {
                 **metadata,
@@ -107,16 +107,22 @@ class FAISSVectorDB:
         if self.index is None or self.index.ntotal == 0:
             return []
         
+        needs_filtering = bool(paper_ids) or bool(user_id)
+        
         # Convert query to numpy array
         query_array = np.array([query_vector], dtype=np.float32)
         
-        # Search
-        k = min(top_k, self.index.ntotal)
+        # When filtering is needed, fetch many more candidates so we have
+        # enough results left after removing non-matching entries.
+        candidate_multiplier = 20 if needs_filtering else 1
+        k = min(top_k * candidate_multiplier, self.index.ntotal)
         distances, indices = self.index.search(query_array, k)
         
+        paper_ids_set = set(paper_ids) if paper_ids else None
+        
         results = []
-        for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
-            if idx == -1:  # FAISS returns -1 for invalid indices
+        for distance, idx in zip(distances[0], indices[0]):
+            if idx == -1:
                 continue
             
             faiss_id = str(idx)
@@ -125,15 +131,13 @@ class FAISSVectorDB:
             
             metadata = self.metadata[faiss_id].copy()
             
-            # Filter by paper_ids if provided
-            if paper_ids and metadata.get("paper_id") not in paper_ids:
+            if paper_ids_set and metadata.get("paper_id") not in paper_ids_set:
                 continue
-            # Filter by user_id if provided
-            if user_id and metadata.get("user_id") != user_id:
-                continue
+            if user_id:
+                metadata_user_id = metadata.get("user_id")
+                if metadata_user_id and metadata_user_id != user_id:
+                    continue
             
-            # Convert distance to similarity score (lower distance = higher similarity)
-            # For normalized vectors with L2, we can use 1 / (1 + distance) as similarity
             similarity = 1.0 / (1.0 + float(distance))
             
             results.append({
@@ -142,8 +146,10 @@ class FAISSVectorDB:
                 "distance": float(distance),
                 "metadata": metadata
             })
+            
+            if len(results) >= top_k:
+                break
         
-        # Sort by score (descending)
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
     

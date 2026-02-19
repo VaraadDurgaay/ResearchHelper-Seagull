@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.api.dependencies import get_current_user_id, get_current_workspace_id
 from app.models.schemas import DoiLookupRequest, DoiLookupResponse, DoiImportRequest, DoiImportResponse
 from app.services.doi_service import lookup_dois, import_doi
+from app.services.papers_service import save_paper
 
 router = APIRouter()
 
@@ -31,6 +32,7 @@ async def import_doi_endpoint(
         raise HTTPException(status_code=400, detail="DOI is required")
     try:
         paper = import_doi(payload.doi, workspace_id=workspace_id, user_id=user_id)
+        save_paper(paper)
         return DoiImportResponse(paper=paper)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

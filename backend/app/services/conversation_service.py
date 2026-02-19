@@ -15,14 +15,15 @@ from app.models.schemas import (
 )
 
 
-def create_conversation(user_id: str, title: str = "New Chat") -> ConversationResponse:
-    """Create a new conversation."""
+def create_conversation(user_id: str, workspace_id: str, title: str = "New Chat") -> ConversationResponse:
+    """Create a new conversation scoped to a workspace."""
     conversations = get_conversations_collection()
     now = datetime.now(timezone.utc)
     conv_id = str(uuid.uuid4())
     doc = {
         "conversation_id": conv_id,
         "user_id": user_id,
+        "workspace_id": workspace_id,
         "title": title,
         "created_at": now,
         "updated_at": now,
@@ -33,6 +34,7 @@ def create_conversation(user_id: str, title: str = "New Chat") -> ConversationRe
         id=conv_id,
         title=title,
         user_id=user_id,
+        workspace_id=workspace_id,
         created_at=now,
         updated_at=now,
         message_count=0,
@@ -40,9 +42,9 @@ def create_conversation(user_id: str, title: str = "New Chat") -> ConversationRe
 
 
 def get_or_create_conversation(
-    conversation_id: Optional[str], user_id: str, first_message: str = ""
+    conversation_id: Optional[str], user_id: str, workspace_id: str, first_message: str = ""
 ) -> str:
-    """Get existing conversation or create new one."""
+    """Get existing conversation or create new one within a workspace."""
     if conversation_id:
         conversations = get_conversations_collection()
         existing = conversations.find_one(
@@ -51,10 +53,9 @@ def get_or_create_conversation(
         if existing:
             return conversation_id
 
-    # Create new conversation with title from first message
     title = first_message[:50] + "..." if len(first_message) > 50 else first_message
     title = title or "New Chat"
-    conv = create_conversation(user_id, title)
+    conv = create_conversation(user_id, workspace_id, title)
     return conv.id
 
 
@@ -97,10 +98,33 @@ def add_message(
     )
 
 
-def get_conversations_by_user(user_id: str, limit: int = 50) -> List[ConversationResponse]:
-    """Get all conversations for a user."""
+def get_recent_messages(
+    conversation_id: str, user_id: str, limit: int = 10
+) -> List[dict]:
+    """Return the last N messages as plain dicts with 'role' and 'content' keys."""
+    messages_col = get_messages_collection()
+    docs = (
+        messages_col.find(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"role": 1, "content": 1, "_id": 0},
+        )
+        .sort("created_at", -1)
+        .limit(limit)
+    )
+    # Reverse so oldest is first (chronological order for the LLM)
+    result = list(docs)
+    result.reverse()
+    return result
+
+
+def get_conversations_by_user(user_id: str, workspace_id: str, limit: int = 50) -> List[ConversationResponse]:
+    """Get conversations for a user within a specific workspace."""
     conversations = get_conversations_collection()
-    docs = conversations.find({"user_id": user_id}).sort("updated_at", -1).limit(limit)
+    docs = (
+        conversations.find({"user_id": user_id, "workspace_id": workspace_id})
+        .sort("updated_at", -1)
+        .limit(limit)
+    )
     result = []
     for doc in docs:
         result.append(
@@ -108,6 +132,7 @@ def get_conversations_by_user(user_id: str, limit: int = 50) -> List[Conversatio
                 id=doc["conversation_id"],
                 title=doc["title"],
                 user_id=doc["user_id"],
+                workspace_id=doc.get("workspace_id", ""),
                 created_at=doc["created_at"],
                 updated_at=doc["updated_at"],
                 message_count=doc.get("message_count", 0),
@@ -150,6 +175,7 @@ def get_conversation_with_messages(
         id=conv["conversation_id"],
         title=conv["title"],
         user_id=conv["user_id"],
+        workspace_id=conv.get("workspace_id", ""),
         created_at=conv["created_at"],
         updated_at=conv["updated_at"],
         message_count=conv.get("message_count", 0),

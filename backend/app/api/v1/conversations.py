@@ -3,7 +3,7 @@ Conversations API Endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends
 
-from app.api.dependencies import get_current_user_id
+from app.api.dependencies import get_current_user_id, get_current_workspace_id
 from app.models.schemas import (
     ConversationListResponse,
     ConversationDetailResponse,
@@ -18,9 +18,12 @@ router = APIRouter()
 
 
 @router.get("/", response_model=ConversationListResponse)
-async def list_conversations(user_id: str = Depends(get_current_user_id)):
-    """List all conversations for the current user."""
-    conversations = get_conversations_by_user(user_id)
+async def list_conversations(
+    user_id: str = Depends(get_current_user_id),
+    workspace_id: str = Depends(get_current_workspace_id),
+):
+    """List conversations for the current user in the active workspace."""
+    conversations = get_conversations_by_user(user_id, workspace_id)
     return ConversationListResponse(conversations=conversations, total=len(conversations))
 
 

@@ -2,7 +2,7 @@
 LLM Client Module
 Simple wrapper for OpenAI chat completions.
 """
-from typing import Optional
+from typing import Optional, List, Dict
 
 from openai import OpenAI
 
@@ -21,12 +21,23 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def generate_completion(prompt: str) -> str:
-    """Generate a completion using a single prompt template."""
+def generate_completion(
+    prompt: str,
+    chat_history: Optional[List[Dict[str, str]]] = None,
+) -> str:
+    """Generate a completion, optionally with conversation history."""
     client = _get_client()
+
+    messages: List[Dict[str, str]] = []
+
+    if chat_history:
+        messages.extend(chat_history)
+
+    messages.append({"role": "user", "content": prompt})
+
     response = client.chat.completions.create(
         model=settings.openai_model,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         temperature=0.0,
         max_tokens=1500,
     )

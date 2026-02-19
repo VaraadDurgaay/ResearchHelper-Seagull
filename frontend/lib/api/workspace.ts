@@ -1,22 +1,36 @@
-/**
- * # Workspace API Functions
- * 
- * ## What it does:
- * API functions for workspace operations: get workspaces, create workspace, switch workspace,
- * get current workspace, update workspace.
- * 
- * ## How it works:
- * - Exports functions for workspace operations
- * - Uses API client from client.ts
- * - Manages workspace context
- * 
- * ## What to include:
- * - getWorkspaces(): Promise<Workspace[]> - List all workspaces for user
- * - getCurrentWorkspace(): Promise<Workspace> - Get current active workspace
- * - createWorkspace(name: string): Promise<Workspace> - Create new workspace
- * - updateWorkspace(id: string, data: Partial<Workspace>): Promise<Workspace> - Update workspace
- * - deleteWorkspace(id: string): Promise<void> - Delete workspace
- * - switchWorkspace(id: string): Promise<void> - Switch active workspace
- * - TypeScript types: Workspace
- */
+import { apiClient } from "./client";
+import type { Workspace, WorkspaceListResponse } from "@/types/workspace";
 
+const API_BASE = "/api/v1/workspaces";
+
+export async function getWorkspaces(): Promise<WorkspaceListResponse> {
+  const response = await apiClient.get<WorkspaceListResponse>(API_BASE);
+  return response.data;
+}
+
+export async function getActiveWorkspace(): Promise<Workspace> {
+  const response = await apiClient.get<Workspace>(`${API_BASE}/active`);
+  return response.data;
+}
+
+export async function createWorkspace(name: string): Promise<Workspace> {
+  const response = await apiClient.post<Workspace>(API_BASE, { name });
+  return response.data;
+}
+
+export async function switchWorkspace(workspaceId: string): Promise<Workspace> {
+  const response = await apiClient.post<Workspace>(
+    `${API_BASE}/${workspaceId}/switch`
+  );
+  return response.data;
+}
+
+export async function renameWorkspace(
+  workspaceId: string,
+  name: string
+): Promise<Workspace> {
+  const response = await apiClient.put<Workspace>(`${API_BASE}/${workspaceId}`, {
+    name,
+  });
+  return response.data;
+}

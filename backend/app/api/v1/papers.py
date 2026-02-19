@@ -105,11 +105,14 @@ async def upload_paper(
 
 
 @router.get("/", response_model=PaperListResponse)
-async def list_papers(user_id: str = Depends(get_current_user_id)):
+async def list_papers(
+    user_id: str = Depends(get_current_user_id),
+    workspace_id: str = Depends(get_current_workspace_id),
+):
     """
-    List all papers for the current user.
+    List papers for the current workspace.
     """
-    papers = get_papers_by_user(user_id)
+    papers = get_papers_by_user(user_id, workspace_id=workspace_id)
     return PaperListResponse(papers=papers, total=len(papers))
 
 

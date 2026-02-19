@@ -3,7 +3,7 @@ Main API Router
 """
 from fastapi import APIRouter, Depends
 from app.api.dependencies import get_current_user_id
-from app.api.v1 import papers, chat, cross_eval, doi, auth, conversations, files
+from app.api.v1 import papers, chat, cross_eval, doi, auth, conversations, files, workspace
 
 api_router = APIRouter()
 
@@ -14,6 +14,9 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(files.router, prefix="/files", tags=["files"])
 
 # Protected routes (require JWT)
+api_router.include_router(
+    workspace.router, prefix="/workspaces", tags=["workspaces"], dependencies=[Depends(get_current_user_id)]
+)
 api_router.include_router(
     papers.router, prefix="/papers", tags=["papers"], dependencies=[Depends(get_current_user_id)]
 )

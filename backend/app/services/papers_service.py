@@ -37,10 +37,13 @@ def save_paper(paper: PaperResponse) -> PaperResponse:
     return paper
 
 
-def get_papers_by_user(user_id: str) -> List[PaperResponse]:
-    """Get all papers for a user."""
+def get_papers_by_user(user_id: str, workspace_id: Optional[str] = None) -> List[PaperResponse]:
+    """Get papers for a user, optionally filtered by workspace."""
     papers = get_papers_collection()
-    docs = papers.find({"user_id": user_id}).sort("upload_date", -1)
+    query: dict = {"user_id": user_id}
+    if workspace_id:
+        query["workspace_id"] = workspace_id
+    docs = papers.find(query).sort("upload_date", -1)
     result = []
     for doc in docs:
         result.append(
@@ -61,6 +64,16 @@ def get_papers_by_user(user_id: str) -> List[PaperResponse]:
             )
         )
     return result
+
+
+def get_paper_ids_for_workspace(user_id: str, workspace_id: str) -> List[str]:
+    """Return all paper IDs belonging to a workspace."""
+    papers = get_papers_collection()
+    docs = papers.find(
+        {"user_id": user_id, "workspace_id": workspace_id},
+        {"paper_id": 1},
+    )
+    return [doc["paper_id"] for doc in docs]
 
 
 def get_paper_by_id(paper_id: str, user_id: str) -> Optional[PaperResponse]:

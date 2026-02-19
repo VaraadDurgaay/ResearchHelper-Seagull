@@ -83,6 +83,7 @@ class ConversationResponse(BaseModel):
     id: str
     title: str
     user_id: str
+    workspace_id: str = ""
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
@@ -156,3 +157,28 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class WorkspaceCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class WorkspaceUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    user_id: str
+    is_active: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceListResponse(BaseModel):
+    workspaces: List[WorkspaceResponse]
+    total: int

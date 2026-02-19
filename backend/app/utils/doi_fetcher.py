@@ -6,6 +6,7 @@ Does not download PDFs.
 """
 
 from typing import Dict, Any, Optional, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 
 CROSSREF_API = "https://api.crossref.org/works/"
@@ -23,7 +24,7 @@ def normalize_doi(raw_doi: str) -> str:
 
 def _fetch_crossref(doi: str) -> Optional[Dict[str, Any]]:
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=15) as client:
             response = client.get(f"{CROSSREF_API}{doi}")
             if response.status_code != 200:
                 return None
@@ -37,10 +38,18 @@ def _fetch_crossref(doi: str) -> Optional[Dict[str, Any]]:
                 if name:
                     authors.append(name)
             url = data.get("URL")
+            pdf_url = None
+            for link in data.get("link", []) or []:
+                content_type = (link.get("content-type") or "").lower()
+                if "pdf" in content_type:
+                    pdf_url = link.get("URL") or pdf_url
+                    if pdf_url:
+                        break
             return {
                 "title": title,
                 "authors": authors,
                 "url": url,
+                "pdf_url": pdf_url,
                 "source": "crossref",
             }
     except Exception:
@@ -49,7 +58,7 @@ def _fetch_crossref(doi: str) -> Optional[Dict[str, Any]]:
 
 def _fetch_openalex(doi: str) -> Optional[Dict[str, Any]]:
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=15) as client:
             response = client.get(f"{OPENALEX_API}{doi}")
             if response.status_code != 200:
                 return None
@@ -92,8 +101,24 @@ def fetch_doi_metadata(doi: str) -> Dict[str, Any]:
     if not normalized:
         return {"doi": doi, "error": "Invalid DOI"}
 
-    crossref = _fetch_crossref(normalized)
-    openalex = _fetch_openalex(normalized)
+    # Fetch from both sources in parallel to reduce total wait time
+    crossref = None
+    openalex = None
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(_fetch_crossref, normalized): "crossref",
+            executor.submit(_fetch_openalex, normalized): "openalex",
+        }
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                result = future.result()
+                if source == "crossref":
+                    crossref = result
+                else:
+                    openalex = result
+            except Exception:
+                pass
 
     title = None
     authors: List[str] = []
@@ -116,6 +141,8 @@ def fetch_doi_metadata(doi: str) -> Dict[str, Any]:
         source = "crossref"
     if openalex and openalex.get("pdf_url"):
         pdf_url = openalex.get("pdf_url")
+    elif crossref and crossref.get("pdf_url"):
+        pdf_url = crossref.get("pdf_url")
 
     if not title and not url:
         return {"doi": normalized, "error": "DOI not found"}

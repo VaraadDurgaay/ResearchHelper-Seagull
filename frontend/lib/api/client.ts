@@ -22,11 +22,14 @@ class ApiClient {
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        // Add auth token if available (only in browser)
         if (typeof window !== "undefined") {
           const token = localStorage.getItem("auth_token");
           if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+          }
+          const workspaceId = localStorage.getItem("active_workspace_id");
+          if (workspaceId) {
+            config.headers["X-Workspace-Id"] = workspaceId;
           }
         }
         return config;

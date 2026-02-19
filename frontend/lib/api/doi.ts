@@ -8,6 +8,9 @@ import type { Paper } from "@/types/paper";
 
 const API_BASE = "/api/v1/doi";
 
+// Longer timeout for DOI operations (metadata fetch + PDF download + ingestion)
+const DOI_TIMEOUT = 120000; // 120 seconds
+
 export interface DoiLookupRequest {
   dois: string[];
 }
@@ -27,9 +30,11 @@ export interface DoiLookupResponse {
 }
 
 export async function lookupDois(dois: string[]): Promise<DoiLookupResponse> {
-  const response = await apiClient.post<DoiLookupResponse>(`${API_BASE}/lookup`, {
-    dois,
-  });
+  const response = await apiClient.post<DoiLookupResponse>(
+    `${API_BASE}/lookup`,
+    { dois },
+    { timeout: DOI_TIMEOUT }
+  );
 
   return response.data;
 }
@@ -39,9 +44,11 @@ export interface DoiImportResponse {
 }
 
 export async function importDoi(doi: string): Promise<DoiImportResponse> {
-  const response = await apiClient.post<DoiImportResponse>(`${API_BASE}/import`, {
-    doi,
-  });
+  const response = await apiClient.post<DoiImportResponse>(
+    `${API_BASE}/import`,
+    { doi },
+    { timeout: DOI_TIMEOUT }
+  );
 
   return response.data;
 }

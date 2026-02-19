@@ -12,8 +12,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Paper } from "@/types/paper";
+import { useWorkspace } from "@/store/workspaceStore";
 
 export default function PDFPage() {
+  const { activeWorkspace } = useWorkspace();
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewingPaper, setViewingPaper] = useState<Paper | null>(null);
@@ -30,8 +32,9 @@ export default function PDFPage() {
   };
 
   useEffect(() => {
+    setLoading(true);
     loadPapers();
-  }, []);
+  }, [activeWorkspace?.id]);
 
   const handleDelete = async (paperId: string) => {
     if (!confirm("Are you sure you want to delete this paper?")) return;

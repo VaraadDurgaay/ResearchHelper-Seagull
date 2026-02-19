@@ -8,6 +8,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-brand: var(--font-brand);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,71 +46,71 @@
 
 :root {
   --radius: 0.625rem;
-  --background: #f0f0db;
-  --foreground: #30364f;
-  --card: #f0f0db;
-  --card-foreground: #30364f;
-  --popover: #f0f0db;
-  --popover-foreground: #30364f;
-  --primary: #30364f;
-  --primary-foreground: #30364f;
-  --secondary: #e1d9bc;
-  --secondary-foreground: #30364f;
-  --muted: #acbac4;
-  --muted-foreground: #30364f;
-  --accent: #e1d9bc;
-  --accent-foreground: #30364f;
-  --destructive: #9b3a2f;
-  --border: #acbac4;
-  --input: #acbac4;
-  --ring: #30364f;
-  --chart-1: #30364f;
-  --chart-2: #acbac4;
-  --chart-3: #e1d9bc;
-  --chart-4: #f0f0db;
-  --chart-5: #e1d9bc;
-  --sidebar: #e1d9bc;
-  --sidebar-foreground: #30364f;
-  --sidebar-primary: #30364f;
-  --sidebar-primary-foreground: #30364f;
-  --sidebar-accent: #acbac4;
-  --sidebar-accent-foreground: #30364f;
-  --sidebar-border: #acbac4;
-  --sidebar-ring: #30364f;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #111111;
+  --card-foreground: #ededed;
+  --popover: #161616;
+  --popover-foreground: #ededed;
+  --primary: #ffffff;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ededed;
+  --muted: #1a1a1a;
+  --muted-foreground: #a0a0a0;
+  --accent: #1c1c1c;
+  --accent-foreground: #ededed;
+  --destructive: #e5484d;
+  --border: #222222;
+  --input: #222222;
+  --ring: #525252;
+  --chart-1: #ffffff;
+  --chart-2: #a0a0a0;
+  --chart-3: #525252;
+  --chart-4: #1a1a1a;
+  --chart-5: #333333;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #a0a0a0;
+  --sidebar-primary: #ededed;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ededed;
+  --sidebar-border: #1f1f1f;
+  --sidebar-ring: #525252;
 }
 
 .dark {
-  --background: #30364f;
-  --foreground: #30364f;
-  --card: #30364f;
-  --card-foreground: #30364f;
-  --popover: #30364f;
-  --popover-foreground: #30364f;
-  --primary: #f0f0db;
-  --primary-foreground: #30364f;
-  --secondary: #acbac4;
-  --secondary-foreground: #30364f;
-  --muted: #acbac4;
-  --muted-foreground: #30364f;
-  --accent: #e1d9bc;
-  --accent-foreground: #30364f;
-  --destructive: #d46a5f;
-  --border: #acbac4;
-  --input: #acbac4;
-  --ring: #f0f0db;
-  --chart-1: #f0f0db;
-  --chart-2: #acbac4;
-  --chart-3: #e1d9bc;
-  --chart-4: #30364f;
-  --chart-5: #acbac4;
-  --sidebar: #30364f;
-  --sidebar-foreground: #30364f;
-  --sidebar-primary: #f0f0db;
-  --sidebar-primary-foreground: #30364f;
-  --sidebar-accent: #acbac4;
-  --sidebar-accent-foreground: #30364f;
-  --sidebar-border: #acbac4;
-  --sidebar-ring: #f0f0db;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #111111;
+  --card-foreground: #ededed;
+  --popover: #161616;
+  --popover-foreground: #ededed;
+  --primary: #ffffff;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ededed;
+  --muted: #1a1a1a;
+  --muted-foreground: #a0a0a0;
+  --accent: #1c1c1c;
+  --accent-foreground: #ededed;
+  --destructive: #e5484d;
+  --border: #222222;
+  --input: #222222;
+  --ring: #525252;
+  --chart-1: #ffffff;
+  --chart-2: #a0a0a0;
+  --chart-3: #525252;
+  --chart-4: #1a1a1a;
+  --chart-5: #333333;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #a0a0a0;
+  --sidebar-primary: #ededed;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ededed;
+  --sidebar-border: #1f1f1f;
+  --sidebar-ring: #525252;
 }
 
 @layer base {
@@ -118,5 +119,34 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .brand-wordmark {
+    font-family: var(--font-brand), sans-serif;
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+  }
+
+  .brand-initial {
+    position: relative;
+    display: inline-block;
+    margin-right: 0.01em;
+  }
+
+  .brand-initial::after {
+    content: "";
+    position: absolute;
+    left: 0.08em;
+    right: 0.02em;
+    top: 0.44em;
+    border-top: 1.5px solid currentColor;
+    transform: rotate(-8deg);
+    transform-origin: left center;
+    opacity: 0.95;
+    pointer-events: none;
   }
 }
