@@ -32,7 +32,7 @@ export interface GraphData {
 
 // --- Research Intelligence Graph ---
 
-export type IntelligenceNodeType = "paper" | "method" | "dataset" | "concept";
+export type IntelligenceNodeType = "paper" | "method" | "dataset" | "concept" | "keypoint";
 
 export interface IntelligenceGraphNode {
   id: string;
@@ -42,6 +42,8 @@ export interface IntelligenceGraphNode {
   cluster_id?: number;
   is_research_gap?: boolean;
   paper_count?: number;
+  /** Concept nodes only: "rare" | "low_coverage" | "common" (workspace scope) */
+  concept_rarity?: "rare" | "low_coverage" | "common";
   /** Paper nodes only: for side panel */
   main_problem?: string;
   methods_used?: string[];
@@ -59,7 +61,8 @@ export type IntelligenceLinkType =
   | "contradiction"
   | "uses_method"
   | "uses_dataset"
-  | "has_concept";
+  | "has_concept"
+  | "has_keypoint";
 
 export interface ContradictionEntry {
   claim: string;

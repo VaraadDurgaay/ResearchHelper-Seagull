@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect, forwardRef } from "react";
 import dynamic from "next/dynamic";
 import { getGraphWorkspace, getGraphWorkspaceIntelligence } from "@/lib/api/graph";
 import { getPaper } from "@/lib/api/papers";
@@ -13,7 +13,18 @@ import { buildDenseConnections, type EnrichedLink } from "@/lib/graph/buildDense
 import { rebuildIntelligenceForWorkspace } from "@/lib/api/debug";
 import { louvainCommunities } from "@/lib/graph/clusterDetection";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
+// IMPORTANT: next/dynamic does not forward refs by default.
+// We wrap the dynamically imported component with forwardRef so `fgRef.current.zoomToFit(...)` works.
+const ForceGraph2D = dynamic(
+  () =>
+    import("react-force-graph-2d").then((mod) => {
+      const FG = mod.default as unknown as React.ComponentType<any>;
+      const Wrapped = forwardRef<any, any>((props, ref) => <FG {...props} ref={ref} />);
+      Wrapped.displayName = "ForceGraph2D";
+      return Wrapped;
+    }),
+  { ssr: false }
+);
 
 // Obsidian-like dark background and graph colors
 const BG = "#1f2024";
@@ -376,21 +387,29 @@ export default function GraphPage() {
     loadGraph();
   }, [activeWorkspace?.id, workspaceLoading, loadGraph]);
 
-  // Force simulation tuning: compact, centered layout (no extreme scattering)
-  const CHARGE_STRENGTH = -45;
-  const LINK_DISTANCE_DEFAULT = 45;
-  const CENTER_STRENGTH = 0.6;
+  // Compact layout: clusters equispaced and filled into visible screen (readable, no wasted space)
+  const CHARGE_STRENGTH = -90;
+  const CHARGE_DISTANCE_MAX = 80;
+  const LINK_DISTANCE_DEFAULT = 36;
+  const CENTER_STRENGTH = 2.2; // strong pull so all clusters sit together in center
+  const ZOOM_TO_FIT_PADDING = 24;
+  const ZOOM_TO_FIT_DURATION = 500;
 
   useEffect(() => {
     if (!fgRef.current || !graphData.nodes.length) return;
     try {
       const charge = fgRef.current.d3Force("charge");
-      if (charge && typeof charge.strength === "function") {
-        (charge as { strength: (v: number) => void }).strength(CHARGE_STRENGTH);
+      if (charge) {
+        if (typeof (charge as { strength: (v: number) => void }).strength === "function") {
+          (charge as { strength: (v: number) => void }).strength(CHARGE_STRENGTH);
+        }
+        if (typeof (charge as { distanceMax: (v: number) => void }).distanceMax === "function") {
+          (charge as { distanceMax: (v: number) => void }).distanceMax(CHARGE_DISTANCE_MAX);
+        }
       }
       const link = fgRef.current.d3Force("link");
       if (link) {
-        if (typeof link.strength === "function") (link as { strength: (v: number) => void }).strength(0.75);
+        if (typeof link.strength === "function") (link as { strength: (v: number) => void }).strength(0.85);
         if (typeof link.distance === "function") {
           link.distance((l: EnrichedLink) => (l.distance != null ? l.distance : LINK_DISTANCE_DEFAULT));
         }
@@ -398,6 +417,10 @@ export default function GraphPage() {
       const center = fgRef.current.d3Force("center");
       if (center && typeof center.strength === "function") {
         (center as { strength: (v: number) => void }).strength(CENTER_STRENGTH);
+      }
+      // Reheat simulation so it re-runs with compact forces (clusters pull to center)
+      if (typeof fgRef.current.d3ReheatSimulation === "function") {
+        fgRef.current.d3ReheatSimulation();
       }
       // Diagnostic: log force config
       const nodeIds = new Set(graphData.nodes.map((n) => n.id));
@@ -425,7 +448,7 @@ export default function GraphPage() {
         }
       }
       // eslint-disable-next-line no-console
-      console.log("[GRAPH FORCE] charge strength:", CHARGE_STRENGTH, "| link distance:", LINK_DISTANCE_DEFAULT, "| center strength:", CENTER_STRENGTH, "| disconnected components:", components);
+      console.log("[GRAPH FORCE] charge:", CHARGE_STRENGTH, "distanceMax:", CHARGE_DISTANCE_MAX, "| link:", LINK_DISTANCE_DEFAULT, "| center:", CENTER_STRENGTH, "| components:", components);
     } catch {
       // ignore
     }
@@ -459,9 +482,9 @@ export default function GraphPage() {
     setSelectedContradiction(null);
   }, []);
 
-  const handleBackgroundDblClick = useCallback(() => {
-    if (fgRef.current) {
-      fgRef.current.zoomToFit(400, 100);
+  const handleFitView = useCallback(() => {
+    if (fgRef.current && typeof fgRef.current.zoomToFit === "function") {
+      fgRef.current.zoomToFit(ZOOM_TO_FIT_DURATION, ZOOM_TO_FIT_PADDING);
     }
   }, []);
 
@@ -549,6 +572,7 @@ export default function GraphPage() {
         if (t === "method") return "rgba(220, 160, 100, 0.95)";
         if (t === "dataset") return "rgba(100, 200, 180, 0.95)";
         if (t === "concept") return "rgba(180, 140, 220, 0.9)";
+        if (t === "keypoint") return "rgba(255, 195, 90, 0.95)";
       }
       if (showClusters && "clusterId" in node && node.clusterId != null) {
         return CLUSTER_COLORS[node.clusterId % CLUSTER_COLORS.length];
@@ -598,23 +622,54 @@ export default function GraphPage() {
       ctx.fillStyle = "#7077A1";
       ctx.fill();
 
-      // 2) Label below node: inverse scale so text stays visually stable
+      // 2) Label just below node: compact to avoid overlap (single line for small nodes, 2 lines for paper)
       if (labelText) {
-        const baseFontSize = 6;
+        const isPaper = node?.type === "paper";
+        const baseFontSize = isPaper ? 6 : 5;
         let fontSize = baseFontSize / scale;
-        fontSize = Math.max(3, Math.min(fontSize, 10));
+        fontSize = Math.max(3, Math.min(fontSize, isPaper ? 10 : 8));
 
         ctx.font = `${fontSize}px Inter, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillStyle = "rgba(223, 208, 184, 0.85)";
 
-        const maxLength = 30;
-        const displayLabel =
-          String(labelText).length > maxLength
-            ? String(labelText).substring(0, maxLength) + "..."
-            : String(labelText);
-        ctx.fillText(displayLabel, x, y + size + 4);
+        const fullLabel = String(labelText).trim();
+        const gapBelowNode = 2; // just below the circle
+        const lineHeight = fontSize + 1;
+
+        if (!isPaper) {
+          // Small nodes: single line, truncated so label stays under node and doesn't overlap others
+          const maxLen = 22;
+          const single = fullLabel.length <= maxLen ? fullLabel : fullLabel.slice(0, maxLen - 3) + "...";
+          ctx.fillText(single, x, y + size + gapBelowNode);
+        } else {
+          // Paper nodes: max 2 lines, shorter per line to reduce overlap
+          const maxCharsPerLine = 28;
+          const maxLines = 2;
+          const words = fullLabel.split(/\s+/).filter(Boolean);
+          const lines: string[] = [];
+          let current = "";
+          for (const w of words) {
+            const next = current ? `${current} ${w}` : w;
+            if (next.length <= maxCharsPerLine) {
+              current = next;
+            } else {
+              if (current) lines.push(current);
+              current = w.length > maxCharsPerLine ? w.slice(0, maxCharsPerLine) : w;
+            }
+            if (lines.length >= maxLines) break;
+          }
+          if (current) lines.push(current);
+          const drawnLines = lines.slice(0, maxLines);
+          const shown = drawnLines.join(" ");
+          const truncated = lines.length > maxLines || fullLabel.length > shown.length;
+          drawnLines.forEach((line, i) => {
+            const isLast = i === drawnLines.length - 1;
+            const display = isLast && truncated ? `${line}...` : line;
+            ctx.fillText(display, x, y + size + gapBelowNode + i * lineHeight);
+          });
+        }
       }
 
       ctx.restore();
@@ -766,7 +821,7 @@ export default function GraphPage() {
           >
             {rebuildingIntel ? "Rebuilding intelligence…" : "Re-run intelligence"}
           </Button>
-          <Button variant="secondary" size="sm" onClick={handleBackgroundDblClick}>
+          <Button variant="secondary" size="sm" onClick={handleFitView}>
             <Maximize2 className="h-4 w-4 mr-1" />
             Fit view
           </Button>
@@ -812,7 +867,7 @@ export default function GraphPage() {
               backgroundColor="transparent"
               nodeCanvasObject={drawNode}
               nodeCanvasObjectMode={() => "replace"}
-              nodePointerAreaPaint={(node, color, ctx) => {
+              nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
                 const n = node as NodeWithMeta;
                 const r = nodeRadius(n) + 6;
                 if (n.x == null || n.y == null) return;
@@ -823,12 +878,12 @@ export default function GraphPage() {
               }}
               linkCanvasObject={drawLink}
               linkCanvasObjectMode={() => "replace"}
-              onNodeClick={(node, ev) => {
+              onNodeClick={(node: any, ev: any) => {
                 ev.preventDefault();
                 handleNodeClick(node as NodeWithMeta, ev as unknown as React.MouseEvent);
               }}
-              onNodeHover={(node) => setHoverNode(node as NodeWithMeta)}
-              onLinkClick={(link) => {
+              onNodeHover={(node: any) => setHoverNode(node as NodeWithMeta)}
+              onLinkClick={(link: any) => {
                 const l = link as IntelligenceGraphLink;
                 // STEP 7 — Verify link click handler receives contradiction links
                 if (l?.type === "contradiction") {
@@ -841,16 +896,9 @@ export default function GraphPage() {
               onBackgroundClick={handleBackgroundClick}
               d3AlphaDecay={0.02}
               d3VelocityDecay={0.25}
-              cooldownTicks={300}
+              cooldownTicks={450}
               onEngineStop={() => {
-                // Auto-fit only after simulation stabilizes (no fit before engine ends)
-                setTimeout(() => {
-                  if (fgRef.current) {
-                    fgRef.current.zoomToFit(400, 100);
-                    // eslint-disable-next-line no-console
-                    console.log("[GRAPH FORCE] fitView triggered after stabilization (padding=100, duration=400ms)");
-                  }
-                }, 80);
+                // Auto zoom disabled: view stays put so clusters fill visible area without zooming out
               }}
             />
           </>
@@ -934,13 +982,43 @@ export default function GraphPage() {
             ) : selectedNode ? (
               <>
                 <h3 className="font-semibold text-foreground line-clamp-2">{selectedNode.label}</h3>
-                {useIntelligence && "type" in selectedNode && (selectedNode as IntelligenceGraphNode).type === "concept" ? (
+                {useIntelligence && "type" in selectedNode && (selectedNode as IntelligenceGraphNode).type === "keypoint" ? (
+                  <>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Key point</p>
+                    <p className="text-sm text-foreground mt-1">{selectedNode.label}</p>
+                    <p className="text-sm text-muted-foreground mt-2">Connected papers:</p>
+                    {graphData.links
+                      .filter((l) => (l.source === selectedNode.id || l.target === selectedNode.id) && l.type === "has_keypoint")
+                      .map((l) => {
+                        const paperId = l.source === selectedNode.id ? l.target : l.source;
+                        const paper = graphData.nodes.find((n) => n.id === paperId);
+                        return paper && (paper as IntelligenceGraphNode).type === "paper" ? (
+                          <div key={paperId} className="text-sm mt-1">
+                            <a href={`/pdf/${paperId}`} className="text-primary hover:underline line-clamp-2">
+                              {(paper as IntelligenceGraphNode).label}
+                            </a>
+                          </div>
+                        ) : null;
+                      })}
+                  </>
+                ) : useIntelligence && "type" in selectedNode && (selectedNode as IntelligenceGraphNode).type === "concept" ? (
               <>
-                {(selectedNode as IntelligenceGraphNode).is_research_gap && (
-                  <div className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-sm text-red-400">
-                    Unique concept — potential research gap
-                  </div>
-                )}
+                {(() => {
+                  const intelNode = selectedNode as IntelligenceGraphNode;
+                  const count = intelNode.paper_count ?? 0;
+                  const rarity = intelNode.concept_rarity ?? (count <= 1 ? "rare" : count <= 3 ? "low_coverage" : "common");
+                  const badge =
+                    rarity === "rare"
+                      ? { label: "Rare concept in this workspace", className: "bg-red-500/10 border-red-500/30 text-red-400" }
+                      : rarity === "low_coverage"
+                        ? { label: "Low coverage concept", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" }
+                        : { label: "Common concept", className: "bg-muted/50 border-border text-muted-foreground" };
+                  return (
+                    <div className={`rounded-md border px-2 py-1.5 text-sm mb-2 ${badge.className}`}>
+                      {badge.label}
+                    </div>
+                  );
+                })()}
                 <p className="text-sm text-muted-foreground">
                   Connected papers: {(selectedNode as IntelligenceGraphNode).paper_count ?? 0}
                 </p>

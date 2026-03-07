@@ -40,9 +40,10 @@ Return ONLY valid JSON with no markdown or extra text. Use this exact structure:
 }}
 
 Rules:
-- methods_used: techniques, algorithms, or approaches (e.g. Transformer, BERT, reinforcement learning).
+- methods_used: REQUIRED. List all methodologies, techniques, frameworks, and approaches used or proposed (e.g. reinforcement learning, neural networks, simulation, benchmarking, integrated AI, robot learning, perception pipelines, control frameworks, Transformer, BERT). For robotics/AI papers include integration approaches, evaluation methods, and any named paradigms. Provide at least 1-2; prefer 3-5 when the text describes them.
+- key_findings: REQUIRED. List 2-6 main findings or important points of the paper (short phrases or one short sentence each). These are the key takeaways, contributions, or conclusions that should appear as keypoint nodes in the graph.
 - datasets_used: named datasets or data sources mentioned.
-- keywords: at least 3 and ideally 5-10 key terms for search/topology. Include domain terms and key concepts from the title.
+- keywords: REQUIRED. List 3-10 short KEYWORDS only (1-4 words each), not full sentences. Examples: "reinforcement learning", "neural networks", "robot control", "benchmarking". Use key concepts, domain terms, and title terms. No long phrases or statements—only keyword-style terms for concept nodes.
 - domain: one of NLP, CV, Healthcare, ML, Robotics, HCI, or a short label.
 - claims: explicit or strongly implied factual claims (optional, can be empty array).
 - If a field cannot be determined, use empty array [] or empty string "".
@@ -121,6 +122,39 @@ def _dedupe_keywords(keywords: List[str]) -> List[str]:
     return out
 
 
+# Phrases that often indicate methodology in titles (lowercase for matching)
+_METHOD_LIKE_PHRASES = (
+    "integrated ai", "reinforcement learning", "machine learning", "deep learning",
+    "computer vision", "natural language", "neural network", "transformer",
+    "robotics", "simulation", "benchmarking", "multi-agent", "transfer learning",
+)
+
+
+def _methods_from_title_fallback(title: str) -> List[str]:
+    """
+    When LLM returns no methods_used, derive 1-3 method-like terms from the title
+    so the graph can show at least one methodology node (e.g. for "Towards a science of integrated AI and Robotics").
+    """
+    if not title or len(title.strip()) < 3:
+        return []
+    out: List[str] = []
+    lower = title.lower()
+    for phrase in _METHOD_LIKE_PHRASES:
+        if phrase in lower and phrase not in [o.lower() for o in out]:
+            out.append(phrase.title())
+            if len(out) >= 3:
+                break
+    if not out:
+        parts = re.split(r"\s+(?:of|and|for|in|to|a|the)\s+", title, flags=re.IGNORECASE)
+        for p in parts:
+            p = p.strip()
+            if len(p) >= 4 and len(p) <= 50 and p not in ("Towards", "Science", "Towards a"):
+                out.append(p)
+                if len(out) >= 2:
+                    break
+    return out[:3]
+
+
 def run_llm_extraction(text: str, title: str) -> Dict[str, Any]:
     """
     Call LLM with strict JSON mode. Retry once on parse failure.
@@ -154,7 +188,14 @@ def run_llm_extraction(text: str, title: str) -> Dict[str, Any]:
                 return _empty_extraction()
             main_problem = (data.get("main_problem") or "").strip()
             methods_used = _ensure_list(data.get("methods_used"))
+            if not methods_used and (title or "").strip():
+                methods_used = _methods_from_title_fallback((title or "").strip())
+                if methods_used:
+                    logger.info("methods_used empty from LLM; using title fallback: %s", methods_used)
             key_findings = _ensure_list(data.get("key_findings"))
+            if not key_findings and main_problem:
+                key_findings = [main_problem]
+                logger.info("key_findings empty from LLM; using main_problem as single key finding")
             datasets_used = _ensure_list(data.get("datasets_used"))
             keywords = _ensure_list(data.get("keywords"))
             keywords = _dedupe_keywords(keywords)
@@ -168,7 +209,7 @@ def run_llm_extraction(text: str, title: str) -> Dict[str, Any]:
                 keywords = _dedupe_keywords(keywords)
             domain = (data.get("domain") or "").strip()
             claims = _ensure_list(data.get("claims"))
-            logger.info("LLM extraction success: main_problem=%s chars, methods=%s, keywords=%s", len(main_problem), len(methods_used), len(keywords))
+            logger.info("LLM extraction success: main_problem=%s chars, methods=%s, key_findings=%s, keywords=%s", len(main_problem), len(methods_used), len(key_findings), len(keywords))
             return {
                 "main_problem": main_problem,
                 "methods_used": methods_used,
@@ -262,6 +303,11 @@ def store_paper_intelligence(
         result.modified_count,
         result.upserted_id,
     )
+    if not (methods_used and len(methods_used) > 0):
+        logger.warning(
+            "paper_id=%s stored with no methods_used; graph will show no method nodes for this paper until re-extraction.",
+            paper_id,
+        )
 
 
 def run_intelligence_extraction(

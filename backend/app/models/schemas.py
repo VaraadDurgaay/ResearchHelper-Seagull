@@ -311,11 +311,13 @@ class PaperIntelligence(BaseModel):
 class IntelligenceGraphNode(BaseModel):
     id: str
     label: str
-    type: str  # "paper" | "method" | "dataset" | "concept"
+    type: str  # "paper" | "method" | "dataset" | "concept" | "keypoint"
     year: Optional[int] = None
     cluster_id: Optional[int] = None
     is_research_gap: bool = False
     paper_count: Optional[int] = None
+    # Concept nodes only: "rare" (1 paper), "low_coverage" (2-3), "common" (4+) in this workspace
+    concept_rarity: Optional[str] = None
     # For paper nodes only: payload for side panel (main_problem, methods_used, etc.)
     main_problem: Optional[str] = None
     methods_used: List[str] = Field(default_factory=list)
@@ -329,7 +331,7 @@ class IntelligenceGraphNode(BaseModel):
 class IntelligenceGraphLink(BaseModel):
     source: str
     target: str
-    type: str  # "similarity" | "citation" | "keyword_overlap" | "contradiction" | "uses_method" | "uses_dataset" | "has_concept"
+    type: str  # "similarity" | "citation" | "keyword_overlap" | "contradiction" | "uses_method" | "uses_dataset" | "has_concept" | "has_keypoint"
     weight: Optional[float] = None
 
 

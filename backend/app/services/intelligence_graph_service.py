@@ -7,6 +7,7 @@ from typing import List, Dict, Set, Tuple, Any, Optional
 import re
 import logging
 import math
+import hashlib
 
 from app.db.mongo import (
     get_papers_collection,
@@ -61,6 +62,19 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
 
 def _normalize_label(s: str) -> str:
     return " ".join(s.strip().lower().split())
+
+
+def _to_short_keyword(s: str, max_words: int = 4, max_chars: int = 40) -> str:
+    """Turn a long phrase or statement into a short keyword-style label for small nodes (no full sentences)."""
+    if not s or not s.strip():
+        return ""
+    words = s.strip().split()
+    short = " ".join(words[:max_words]).strip()
+    if len(short) > max_chars:
+        truncated = short[: max_chars - 3]
+        short = truncated.rsplit(" ", 1)[0] if " " in truncated else truncated
+        short = short.rstrip(".,;:")
+    return short if short else s.strip()[:max_chars]
 
 
 def _title_to_keywords(title: str) -> Set[str]:
@@ -218,6 +232,7 @@ def build_workspace_graph(
     method_ids: Dict[str, str] = {}
     dataset_ids: Dict[str, str] = {}
     concept_ids: Dict[str, str] = {}
+    keypoint_ids: Dict[str, str] = {}
 
     def add_method(name: str) -> str:
         key = _normalize_label(name)
@@ -227,7 +242,7 @@ def build_workspace_graph(
             mid = f"method:{key}"
             method_ids[key] = mid
             nodes.append(
-                IntelligenceGraphNode(id=mid, label=name.strip()[:80], type="method", paper_count=None)
+                IntelligenceGraphNode(id=mid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="method", paper_count=None)
             )
         return method_ids[key]
 
@@ -239,7 +254,7 @@ def build_workspace_graph(
             did = f"dataset:{key}"
             dataset_ids[key] = did
             nodes.append(
-                IntelligenceGraphNode(id=did, label=name.strip()[:80], type="dataset", paper_count=None)
+                IntelligenceGraphNode(id=did, label=_to_short_keyword(name, max_words=4, max_chars=40), type="dataset", paper_count=None)
             )
         return dataset_ids[key]
 
@@ -251,9 +266,28 @@ def build_workspace_graph(
             cid = f"concept:{key}"
             concept_ids[key] = cid
             nodes.append(
-                IntelligenceGraphNode(id=cid, label=name.strip()[:80], type="concept", paper_count=0)
+                IntelligenceGraphNode(id=cid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="concept", paper_count=0)
             )
         return concept_ids[key]
+
+    def add_keypoint(text: str) -> str:
+        """Keypoint node: label must be a short keyword phrase, not a full statement."""
+        key = _normalize_label(text[:200])
+        if not key or len(key) < 2:
+            return ""
+        if key not in keypoint_ids:
+            kid = f"keypoint:{hashlib.md5(key.encode()).hexdigest()[:12]}"
+            keypoint_ids[key] = kid
+            label = _to_short_keyword(text.strip(), max_words=4, max_chars=40)
+            nodes.append(
+                IntelligenceGraphNode(
+                    id=kid,
+                    label=label,
+                    type="keypoint",
+                    paper_count=None,
+                )
+            )
+        return keypoint_ids[key]
 
     # Paper nodes (with optional intelligence payload for side panel)
     for p in papers:
@@ -303,11 +337,28 @@ def build_workspace_graph(
                     if n.id == cid and n.type == "concept":
                         n.paper_count = (n.paper_count or 0) + 1
                         break
+        # Keypoint nodes from key_findings (important points of the paper)
+        key_findings = intel.get("key_findings") or []
+        for finding in key_findings[:10]:
+            if not (finding and str(finding).strip()):
+                continue
+            kid = add_keypoint(str(finding).strip())
+            if kid and (pid, kid, "has_keypoint") not in link_set:
+                link_set.add((pid, kid, "has_keypoint"))
+                links.append(IntelligenceGraphLink(source=pid, target=kid, type="has_keypoint"))
 
-    # Concept research gap: mark nodes with paper_count == 1
+    # Concept classification by frequency in this workspace only (not global literature)
     for n in nodes:
-        if n.type == "concept" and (n.paper_count or 0) == 1:
+        if n.type != "concept":
+            continue
+        pc = n.paper_count or 0
+        if pc == 1:
             n.is_research_gap = True
+            n.concept_rarity = "rare"
+        elif pc <= 3:
+            n.concept_rarity = "low_coverage"
+        else:
+            n.concept_rarity = "common"
 
     # Paper–paper similarity (stored embeddings). Strict: only connect if similarity > 0.70.
     vecs: Dict[str, List[float]] = {}
