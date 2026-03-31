@@ -64,6 +64,26 @@ def _normalize_label(s: str) -> str:
     return " ".join(s.strip().lower().split())
 
 
+def _fuzzy_match_key(label: str, existing_keys: Dict[str, str], threshold: float = 0.75) -> Optional[str]:
+    """Return the existing key if label is a close match (substring or high token overlap), else None."""
+    if not label:
+        return None
+    label_tokens = set(label.split())
+    for existing_key in existing_keys:
+        existing_tokens = set(existing_key.split())
+        # Substring containment (either direction)
+        if label in existing_key or existing_key in label:
+            return existing_key
+        # Token overlap (Jaccard-like)
+        if not label_tokens or not existing_tokens:
+            continue
+        overlap = len(label_tokens & existing_tokens)
+        union = len(label_tokens | existing_tokens)
+        if union > 0 and overlap / union >= threshold:
+            return existing_key
+    return None
+
+
 def _to_short_keyword(s: str, max_words: int = 4, max_chars: int = 40) -> str:
     """Turn a long phrase or statement into a short keyword-style label for small nodes (no full sentences)."""
     if not s or not s.strip():
@@ -192,7 +212,7 @@ def build_workspace_graph(
     )
     if not docs:
         logger.debug("Intelligence graph: no papers for workspace_id=%s", workspace_id)
-        return [], [], False
+        return [], [], False, 0
 
     papers = []
     for d in docs:
@@ -207,7 +227,7 @@ def build_workspace_graph(
             "doi": d.get("doi"),
         })
     if not papers:
-        return [], [], False
+        return [], [], False, 0
     paper_ids = {p["id"] for p in papers}
 
     intel_coll = get_paper_intelligence_collection()
@@ -222,7 +242,7 @@ def build_workspace_graph(
 
     # If no intelligence data at all, signal fallback
     if not intel_by_paper:
-        return [], [], False
+        return [], [], False, 0
 
     nodes: List[IntelligenceGraphNode] = []
     links: List[IntelligenceGraphLink] = []
@@ -238,37 +258,43 @@ def build_workspace_graph(
         key = _normalize_label(name)
         if not key or len(key) < 2:
             return ""
-        if key not in method_ids:
-            mid = f"method:{key}"
-            method_ids[key] = mid
-            nodes.append(
-                IntelligenceGraphNode(id=mid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="method", paper_count=None)
-            )
-        return method_ids[key]
+        matched = _fuzzy_match_key(key, method_ids)
+        if matched:
+            return method_ids[matched]
+        mid = f"method:{key}"
+        method_ids[key] = mid
+        nodes.append(
+            IntelligenceGraphNode(id=mid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="method", paper_count=0)
+        )
+        return mid
 
     def add_dataset(name: str) -> str:
         key = _normalize_label(name)
         if not key or len(key) < 2:
             return ""
-        if key not in dataset_ids:
-            did = f"dataset:{key}"
-            dataset_ids[key] = did
-            nodes.append(
-                IntelligenceGraphNode(id=did, label=_to_short_keyword(name, max_words=4, max_chars=40), type="dataset", paper_count=None)
-            )
-        return dataset_ids[key]
+        matched = _fuzzy_match_key(key, dataset_ids)
+        if matched:
+            return dataset_ids[matched]
+        did = f"dataset:{key}"
+        dataset_ids[key] = did
+        nodes.append(
+            IntelligenceGraphNode(id=did, label=_to_short_keyword(name, max_words=4, max_chars=40), type="dataset", paper_count=0)
+        )
+        return did
 
     def add_concept(name: str) -> str:
         key = _normalize_label(name)
         if not key or len(key) < 2:
             return ""
-        if key not in concept_ids:
-            cid = f"concept:{key}"
-            concept_ids[key] = cid
-            nodes.append(
-                IntelligenceGraphNode(id=cid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="concept", paper_count=0)
-            )
-        return concept_ids[key]
+        matched = _fuzzy_match_key(key, concept_ids)
+        if matched:
+            return concept_ids[matched]
+        cid = f"concept:{key}"
+        concept_ids[key] = cid
+        nodes.append(
+            IntelligenceGraphNode(id=cid, label=_to_short_keyword(name, max_words=4, max_chars=40), type="concept", paper_count=0)
+        )
+        return cid
 
     def add_keypoint(text: str) -> str:
         """Keypoint node: label must be a short keyword phrase, not a full statement."""
@@ -321,11 +347,19 @@ def build_workspace_graph(
             if mid and (pid, mid, "uses_method") not in link_set:
                 link_set.add((pid, mid, "uses_method"))
                 links.append(IntelligenceGraphLink(source=pid, target=mid, type="uses_method"))
+                for n in nodes:
+                    if n.id == mid and n.type == "method":
+                        n.paper_count = (n.paper_count or 0) + 1
+                        break
         for d in datasets[:10]:
             did = add_dataset(d)
             if did and (pid, did, "uses_dataset") not in link_set:
                 link_set.add((pid, did, "uses_dataset"))
                 links.append(IntelligenceGraphLink(source=pid, target=did, type="uses_dataset"))
+                for n in nodes:
+                    if n.id == did and n.type == "dataset":
+                        n.paper_count = (n.paper_count or 0) + 1
+                        break
         for k in keywords[:15]:
             cid = add_concept(k)
             if cid:
@@ -347,32 +381,52 @@ def build_workspace_graph(
                 link_set.add((pid, kid, "has_keypoint"))
                 links.append(IntelligenceGraphLink(source=pid, target=kid, type="has_keypoint"))
 
-    # Concept classification by frequency in this workspace only (not global literature)
+    # Classify concepts/methods/datasets relative to workspace size
+    total_papers = len(papers)
     for n in nodes:
-        if n.type != "concept":
+        if n.type not in ("concept", "method", "dataset"):
             continue
         pc = n.paper_count or 0
-        if pc == 1:
+        if pc <= 1:
             n.is_research_gap = True
-            n.concept_rarity = "rare"
-        elif pc <= 3:
-            n.concept_rarity = "low_coverage"
+            n.concept_rarity = "unique"
+        elif total_papers > 0 and pc / total_papers >= 0.5:
+            n.concept_rarity = "core"
         else:
-            n.concept_rarity = "common"
+            n.concept_rarity = "bridge"
 
-    # Paper–paper similarity (stored embeddings). Strict: only connect if similarity > 0.70.
-    vecs: Dict[str, List[float]] = {}
-    for pid, intel in intel_by_paper.items():
-        ev = intel.get("embedding_vector")
-        if ev and isinstance(ev, list) and len(ev) > 0:
-            vecs[pid] = ev
+    # Paper–paper similarity: prefer FAISS chunk centroids (higher quality) over stored paper embeddings.
+    import numpy as np
+    from app.core.vector_db import get_vector_db
+    faiss_centroids: Dict[str, Any] = {}
+    try:
+        vector_db = get_vector_db(index_path=settings.vector_db_path, dimension=settings.embedding_dimension)
+        faiss_centroids = vector_db.get_paper_centroids(workspace_id=workspace_id)
+    except Exception as _e:
+        logger.warning("Graph intelligence: could not load FAISS centroids: %s", _e)
+
+    vecs: Dict[str, Any] = {}
+    for p in papers:
+        pid = p["id"]
+        if pid in faiss_centroids:
+            vecs[pid] = faiss_centroids[pid]  # numpy array from FAISS
+        else:
+            ev = intel_by_paper.get(pid, {}).get("embedding_vector")
+            if ev and isinstance(ev, list) and len(ev) > 0:
+                vecs[pid] = np.array(ev, dtype=np.float32)
+
     pid_list = [p for p in papers if p["id"] in vecs]
     similarity_added = 0
     for i, pa in enumerate(pid_list):
         for pb in pid_list[i + 1 :]:
             if pa["id"] == pb["id"]:
                 continue
-            sim = _cosine_similarity(vecs[pa["id"]], vecs[pb["id"]])
+            va, vb = vecs[pa["id"]], vecs[pb["id"]]
+            norm_a = float(np.linalg.norm(va))
+            norm_b = float(np.linalg.norm(vb))
+            if norm_a <= 0 or norm_b <= 0:
+                continue
+            sim = float(np.dot(va, vb)) / (norm_a * norm_b)
             if sim >= SIMILARITY_THRESHOLD:
                 key = (pa["id"], pb["id"], "similarity")
                 if key not in link_set:
@@ -469,4 +523,4 @@ def build_workspace_graph(
                         n.paper_count = (n.paper_count or 0) + 1
                         break
 
-    return nodes, links, True
+    return nodes, links, True, total_papers

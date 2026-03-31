@@ -4,6 +4,7 @@ WebSocket endpoint for real-time collaboration.
 import asyncio
 import json
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _authenticate_ws(token: str) -> str | None:
+def _authenticate_ws(token: str) -> Optional[str]:
     """Validate JWT and return user_id, or None on failure."""
     try:
         payload = decode_access_token(token)

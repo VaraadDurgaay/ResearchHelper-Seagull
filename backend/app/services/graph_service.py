@@ -3,7 +3,7 @@ Graph Service - Builds global knowledge graph of papers for a workspace.
 Uses existing paper data only: no schema changes.
 Edges: citation (from metadata DOI refs), embedding similarity (>0.75), optional shared keywords.
 """
-from typing import List, Dict, Set, Tuple, Any
+from typing import List, Dict, Set, Tuple, Any, Optional
 import re
 import logging
 import numpy as np
@@ -20,14 +20,14 @@ MAX_NODES = 500
 SIMILARITY_THRESHOLD = 0.70
 
 
-def _year_from_date(publication_date: str) -> int | None:
+def _year_from_date(publication_date: str) -> Optional[int]:
     if not publication_date:
         return None
     match = re.search(r"\d{4}", publication_date)
     return int(match.group(0)) if match else None
 
 
-def _cited_dois_from_metadata(metadata: dict | None) -> List[str]:
+def _cited_dois_from_metadata(metadata: Optional[dict]) -> List[str]:
     """Extract list of DOIs that this paper references, if stored in metadata."""
     if not metadata:
         return []

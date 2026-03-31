@@ -33,7 +33,7 @@ const NODE_DEFAULT = "rgba(223, 208, 184, 1)"; // #DFD0B8
 const NODE_HOVER = "rgba(240, 228, 205, 1)";
 const NODE_SELECTED = "rgba(255, 245, 220, 1)";
 const NODE_FADED = "rgba(223, 208, 184, 0.15)";
-const EDGE_OPACITY_DEFAULT = 0.14;
+const EDGE_OPACITY_DEFAULT = 0.45;
 const EDGE_OPACITY_HIGHLIGHT = 0.95;
 // Edge colors – all links rendered as #7E7474
 const LINK_CITATION = "#7E7474";
@@ -485,6 +485,10 @@ export default function GraphPage() {
   const handleFitView = useCallback(() => {
     if (fgRef.current && typeof fgRef.current.zoomToFit === "function") {
       fgRef.current.zoomToFit(ZOOM_TO_FIT_DURATION, ZOOM_TO_FIT_PADDING);
+      // Double-tap: sometimes the first call doesn't account for all node positions
+      setTimeout(() => {
+        fgRef.current?.zoomToFit(ZOOM_TO_FIT_DURATION, ZOOM_TO_FIT_PADDING);
+      }, ZOOM_TO_FIT_DURATION + 50);
     }
   }, []);
 
@@ -585,9 +589,13 @@ export default function GraphPage() {
   const NODE_RADIUS_DEFAULT = 3;
   const NODE_RADIUS_PAPER = 6;
 
-  /** Visual radius by type: paper nodes slightly larger; method/dataset/concept use default. */
+  /** Visual radius: paper nodes larger; non-paper nodes scale with paper_count. */
   const getNodeRadius = useCallback((node: any) => {
-    return node?.type === "paper" ? NODE_RADIUS_PAPER : NODE_RADIUS_DEFAULT;
+    if (node?.type === "paper") return NODE_RADIUS_PAPER;
+    const pc = node?.paper_count ?? 0;
+    if (pc >= 3) return 4.5;
+    if (pc >= 2) return 3.5;
+    return NODE_RADIUS_DEFAULT;
   }, []);
 
   // Pointer hit-testing radius (matches drawNode circle).
@@ -616,11 +624,28 @@ export default function GraphPage() {
 
       ctx.save();
 
-      // 1) Draw node circle (no zoom scaling)
+      // 1) Research gap ring (behind the fill circle)
+      if (node?.is_research_gap) {
+        ctx.beginPath();
+        ctx.arc(x, y, size + 2.5, 0, 2 * Math.PI);
+        ctx.strokeStyle = "rgba(255, 100, 100, 0.65)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+
+      // 2) Draw node circle
       ctx.beginPath();
       ctx.arc(x, y, size, 0, 2 * Math.PI);
-      ctx.fillStyle = "#7077A1";
+      ctx.fillStyle = nodeColor(node);
       ctx.fill();
+
+      // 3) Red dot on paper nodes that own a unique concept
+      if (node?.type === "paper" && paperHasUniqueConcept.has(node.id)) {
+        ctx.beginPath();
+        ctx.arc(x + size * 0.7, y - size * 0.7, 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = "rgba(255, 80, 80, 0.9)";
+        ctx.fill();
+      }
 
       // 2) Label just below node: compact to avoid overlap (single line for small nodes, 2 lines for paper)
       if (labelText) {
@@ -674,7 +699,7 @@ export default function GraphPage() {
 
       ctx.restore();
     },
-    [getNodeRadius]
+    [getNodeRadius, nodeColor, paperHasUniqueConcept]
   );
 
   const linkOpacity = useCallback(
@@ -705,16 +730,19 @@ export default function GraphPage() {
       const y2 = L.target?.y ?? 0;
       if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) return;
 
-      // STEP 6 — Contradiction links: forced thick red for debugging; log each draw
       const isContradiction = useIntelligence && L.type === "contradiction";
       if (isContradiction) {
-        // eslint-disable-next-line no-console
-        console.log("[CONTRADICTION DEBUG] Drawing contradiction link", L.source, "->", L.target);
-        ctx.strokeStyle = "rgba(255, 0, 0, 0.95)";
-        ctx.lineWidth = 8;
+        ctx.strokeStyle = "rgba(255, 80, 80, 0.95)";
+        ctx.lineWidth = 3;
+      } else if (L.type === "similarity") {
+        ctx.strokeStyle = `rgba(160, 180, 255, ${EDGE_OPACITY_DEFAULT})`;
+        ctx.lineWidth = 1.8;
+      } else if (L.type === "uses_method" || L.type === "uses_dataset" || L.type === "has_concept" || L.type === "has_keypoint") {
+        ctx.strokeStyle = `rgba(180, 170, 160, ${EDGE_OPACITY_DEFAULT * 0.8})`;
+        ctx.lineWidth = 1.0;
       } else {
-        ctx.strokeStyle = "rgba(126, 116, 124, 0.2)";
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(126, 116, 124, ${EDGE_OPACITY_DEFAULT})`;
+        ctx.lineWidth = 1.2;
       }
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -756,7 +784,7 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] w-full overflow-hidden" style={{ background: BG }}>
+    <div className="relative flex h-[calc(100vh-8rem)] w-full overflow-hidden" style={{ background: BG }}>
       {/* STEP 2 — Visual breakpoint: if you see this, this file is the one rendering /graph */}
       <div className="absolute top-0 left-0 right-0 z-[100] bg-red-600 text-white py-3 text-center text-xl font-bold shadow-lg">
         GRAPH FILE ACTIVE
@@ -820,6 +848,22 @@ export default function GraphPage() {
             }}
           >
             {rebuildingIntel ? "Rebuilding intelligence…" : "Re-run intelligence"}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (fgRef.current && typeof fgRef.current.zoom === "function") {
+              const current = fgRef.current.zoom();
+              fgRef.current.zoom(current * 1.3, 200);
+            }
+          }}>
+            +
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (fgRef.current && typeof fgRef.current.zoom === "function") {
+              const current = fgRef.current.zoom();
+              fgRef.current.zoom(current * 0.77, 200);
+            }
+          }}>
+            −
           </Button>
           <Button variant="secondary" size="sm" onClick={handleFitView}>
             <Maximize2 className="h-4 w-4 mr-1" />
@@ -898,10 +942,55 @@ export default function GraphPage() {
               d3VelocityDecay={0.25}
               cooldownTicks={450}
               onEngineStop={() => {
-                // Auto zoom disabled: view stays put so clusters fill visible area without zooming out
+                if (fgRef.current && typeof fgRef.current.zoomToFit === "function") {
+                  setTimeout(() => {
+                    fgRef.current?.zoomToFit(ZOOM_TO_FIT_DURATION, ZOOM_TO_FIT_PADDING);
+                  }, 100);
+                }
               }}
             />
           </>
+        )}
+        {/* Legend — bottom-right corner */}
+        {graphData.nodes.length > 0 && (
+          <div className="absolute bottom-4 right-4 z-20 rounded-lg border border-border/60 bg-card/80 backdrop-blur-sm px-3 py-2.5 text-xs text-foreground/80 shadow-lg select-none">
+            <p className="font-semibold text-foreground mb-1.5 uppercase tracking-wide text-[10px]">Legend</p>
+            <div className="space-y-1">
+              {useIntelligence ? (
+                <>
+                  {/* Node types */}
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(223,208,184,1)" }} />Paper</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(220,160,100,0.95)" }} />Method</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(100,200,180,0.95)" }} />Dataset</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(180,140,220,0.9)" }} />Concept</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(255,195,90,0.95)" }} />Key point</div>
+                  <hr className="border-border/40 my-1" />
+                  {/* Indicators */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 rounded-full flex-shrink-0 border-2" style={{ borderColor: "rgba(255,100,100,0.65)", background: "transparent" }} />
+                    Research gap
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="relative inline-block w-3 h-3 flex-shrink-0">
+                      <span className="absolute inset-0 rounded-full" style={{ background: "rgba(223,208,184,1)" }} />
+                      <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full" style={{ background: "rgba(255,80,80,0.9)" }} />
+                    </span>
+                    Owns unique concept
+                  </div>
+                  <hr className="border-border/40 my-1" />
+                  {/* Edge types */}
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-0.5 flex-shrink-0" style={{ background: "rgba(100,160,255,0.85)" }} />Similarity</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-0.5 flex-shrink-0" style={{ background: "rgba(200,200,200,0.5)" }} />Method / Dataset / Concept</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-0.5 flex-shrink-0" style={{ background: "rgba(255,80,80,0.85)" }} />Contradiction</div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ background: "rgba(223,208,184,1)" }} />Paper</div>
+                  <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-0.5 flex-shrink-0" style={{ background: "#7E7474" }} />Citation / Similar</div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -944,7 +1033,7 @@ export default function GraphPage() {
       )}
 
       {(selectedContradiction || selectedNode) && (
-        <aside className="w-[360px] shrink-0 border-l border-border bg-card p-4 overflow-y-auto shadow-xl animate-in slide-in-from-right duration-200">
+        <aside className="absolute right-0 top-0 h-full w-[360px] border-l border-border bg-card p-4 overflow-y-auto shadow-xl animate-in slide-in-from-right duration-200 z-30">
           <div className="space-y-3">
             {selectedContradiction ? (
               <>
@@ -1001,40 +1090,78 @@ export default function GraphPage() {
                         ) : null;
                       })}
                   </>
-                ) : useIntelligence && "type" in selectedNode && (selectedNode as IntelligenceGraphNode).type === "concept" ? (
+                ) : useIntelligence && "type" in selectedNode && ["concept", "method", "dataset"].includes((selectedNode as IntelligenceGraphNode).type) ? (
               <>
                 {(() => {
                   const intelNode = selectedNode as IntelligenceGraphNode;
+                  const nodeType = intelNode.type;
+                  const noun = nodeType === "method" ? "Method" : nodeType === "dataset" ? "Dataset" : "Concept";
                   const count = intelNode.paper_count ?? 0;
-                  const rarity = intelNode.concept_rarity ?? (count <= 1 ? "rare" : count <= 3 ? "low_coverage" : "common");
-                  const badge =
-                    rarity === "rare"
-                      ? { label: "Rare concept in this workspace", className: "bg-red-500/10 border-red-500/30 text-red-400" }
-                      : rarity === "low_coverage"
-                        ? { label: "Low coverage concept", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" }
-                        : { label: "Common concept", className: "bg-muted/50 border-border text-muted-foreground" };
+                  const totalPapers = intelligenceData?.total_papers ?? 0;
+                  const rarity = intelNode.concept_rarity ?? (count <= 1 ? "unique" : count / Math.max(totalPapers, 1) >= 0.5 ? "core" : "bridge");
+
+                  // Collect connected paper nodes
+                  const connectedPapers = graphData.links
+                    .filter((l) => l.source === selectedNode.id || l.target === selectedNode.id)
+                    .map((l) => {
+                      const otherId = l.source === selectedNode.id ? l.target : l.source;
+                      return graphData.nodes.find((n) => n.id === otherId && (n as IntelligenceGraphNode).type === "paper") as IntelligenceGraphNode | undefined;
+                    })
+                    .filter(Boolean) as IntelligenceGraphNode[];
+
+                  let badge: { label: string; subtext: string; className: string };
+                  if (rarity === "unique" || rarity === "rare") {
+                    badge = {
+                      label: `Unique ${noun} — found in 1 paper`,
+                      subtext: "Potential research gap worth exploring",
+                      className: "bg-red-500/10 border-red-500/30 text-red-400",
+                    };
+                  } else if (rarity === "core" || rarity === "common") {
+                    badge = {
+                      label: `Core ${noun} — appears in ${count}${totalPapers ? ` of ${totalPapers}` : ""} papers`,
+                      subtext: "Foundational to this workspace",
+                      className: "bg-blue-500/10 border-blue-500/30 text-blue-400",
+                    };
+                  } else {
+                    badge = {
+                      label: `Shared across ${count}${totalPapers ? ` of ${totalPapers}` : ""} papers — research bridge`,
+                      subtext: `This ${noun.toLowerCase()} connects multiple papers`,
+                      className: "bg-amber-500/10 border-amber-500/30 text-amber-400",
+                    };
+                  }
+
+                  // Contextual sentence
+                  let bridgeSentence: string | null = null;
+                  if (connectedPapers.length === 1) {
+                    bridgeSentence = `Only found in "${connectedPapers[0].label.slice(0, 50)}" — consider exploring further`;
+                  } else if (connectedPapers.length === 2) {
+                    bridgeSentence = `Connects "${connectedPapers[0].label.slice(0, 35)}" and "${connectedPapers[1].label.slice(0, 35)}"`;
+                  }
+
                   return (
-                    <div className={`rounded-md border px-2 py-1.5 text-sm mb-2 ${badge.className}`}>
-                      {badge.label}
-                    </div>
+                    <>
+                      <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">{noun}</span>
+                      <div className={`rounded-md border px-2 py-1.5 text-sm mt-1 mb-1 ${badge.className}`}>
+                        <div className="font-medium">{badge.label}</div>
+                        <div className="text-xs mt-0.5 opacity-80">{badge.subtext}</div>
+                      </div>
+                      {bridgeSentence && (
+                        <p className="text-xs text-muted-foreground italic mb-2">{bridgeSentence}</p>
+                      )}
+                      {connectedPapers.length > 0 && (
+                        <div className="space-y-1">
+                          {connectedPapers.map((paper) => (
+                            <div key={paper.id} className="text-sm">
+                              <a href={`/pdf/${paper.id}`} className="text-primary hover:underline line-clamp-2">
+                                {paper.label}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
-                <p className="text-sm text-muted-foreground">
-                  Connected papers: {(selectedNode as IntelligenceGraphNode).paper_count ?? 0}
-                </p>
-                {graphData.links
-                  .filter((l) => l.source === selectedNode.id || l.target === selectedNode.id)
-                  .map((l) => {
-                    const otherId = l.source === selectedNode.id ? l.target : l.source;
-                    const other = graphData.nodes.find((n) => n.id === otherId);
-                    return other && (other as IntelligenceGraphNode).type === "paper" ? (
-                      <div key={otherId} className="text-sm">
-                        <a href={`/pdf/${otherId}`} className="text-primary hover:underline line-clamp-2">
-                          {(other as IntelligenceGraphNode).label}
-                        </a>
-                      </div>
-                    ) : null;
-                  })}
               </>
             ) : panelPaper || (useIntelligence && "main_problem" in selectedNode) ? (
               <>

@@ -10,7 +10,7 @@ from app.core.vector_db import get_vector_db
 from app.models.schemas import CrossEvalResponse, CrossEvalResult
 
 
-def _get_all_paper_ids(vector_db, user_id: str | None = None) -> List[str]:
+def _get_all_paper_ids(vector_db, user_id: Optional[str] = None) -> List[str]:
     paper_ids = {
         metadata.get("paper_id")
         for metadata in vector_db.metadata.values()
@@ -20,7 +20,7 @@ def _get_all_paper_ids(vector_db, user_id: str | None = None) -> List[str]:
     return sorted(paper_ids)
 
 
-def _get_paper_title(vector_db, paper_id: str, user_id: str | None = None) -> str:
+def _get_paper_title(vector_db, paper_id: str, user_id: Optional[str] = None) -> str:
     for metadata in vector_db.metadata.values():
         if (
             metadata.get("paper_id") == paper_id

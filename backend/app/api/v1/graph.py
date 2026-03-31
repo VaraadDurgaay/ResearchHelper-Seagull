@@ -43,7 +43,7 @@ async def get_graph_workspace_intelligence(
     # STEP 9 — Workspace consistency: same workspace_id used for graph build
     logger.info("[CONTRADICTION DEBUG] API workspace_id=%s (user_id=%s)", workspace_id, user_id)
 
-    nodes, links, has_intelligence = build_workspace_graph(
+    nodes, links, has_intelligence, total_papers = build_workspace_graph(
         workspace_id=workspace_id, user_id=user_id
     )
     if has_intelligence and not nodes:
@@ -70,4 +70,5 @@ async def get_graph_workspace_intelligence(
         nodes=nodes,
         links=links,
         has_intelligence=has_intelligence,
+        total_papers=total_papers,
     )

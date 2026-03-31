@@ -2,7 +2,7 @@
 Invitation Service - Create, accept, list and revoke workspace invitations.
 """
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import secrets
 import uuid
 
@@ -24,7 +24,7 @@ def create_invitation(
     workspace_id: str,
     inviter_id: str,
     invitee_email: str,
-) -> tuple[InvitationResponse, dict | None]:
+) -> Tuple[InvitationResponse, Optional[dict]]:
     """Create a pending invitation. Returns (response, email_args_or_None)."""
     workspaces = get_workspaces_collection()
     ws_doc = workspaces.find_one({"workspace_id": workspace_id})

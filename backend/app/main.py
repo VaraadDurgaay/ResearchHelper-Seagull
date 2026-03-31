@@ -69,6 +69,7 @@ def _rebuild_faiss_index(vector_db):
         paper_id = doc["paper_id"]
         pdf_path = doc.get("pdf_path", "")
         user_id = doc.get("user_id", "")
+        workspace_id = doc.get("workspace_id", "")
         title = doc.get("title", "Untitled")
 
         if not pdf_path or not os.path.exists(pdf_path):
@@ -102,6 +103,7 @@ def _rebuild_faiss_index(vector_db):
                     "paper_id": paper_id,
                     "paper_title": title,
                     "user_id": user_id,
+                    "workspace_id": workspace_id,
                     "chunk_index": c.chunk_index,
                     "page_number": c.page_number,
                     "text": c.text,

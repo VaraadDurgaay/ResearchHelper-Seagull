@@ -339,3 +339,4 @@ class IntelligenceGraphResponse(BaseModel):
     nodes: List[IntelligenceGraphNode]
     links: List[IntelligenceGraphLink]
     has_intelligence: bool = True
+    total_papers: Optional[int] = None

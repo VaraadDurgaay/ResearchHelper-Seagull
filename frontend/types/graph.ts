@@ -42,8 +42,8 @@ export interface IntelligenceGraphNode {
   cluster_id?: number;
   is_research_gap?: boolean;
   paper_count?: number;
-  /** Concept nodes only: "rare" | "low_coverage" | "common" (workspace scope) */
-  concept_rarity?: "rare" | "low_coverage" | "common";
+  /** Concept/method/dataset nodes: workspace-relative classification */
+  concept_rarity?: "rare" | "low_coverage" | "common" | "unique" | "bridge" | "core";
   /** Paper nodes only: for side panel */
   main_problem?: string;
   methods_used?: string[];
@@ -84,4 +84,5 @@ export interface IntelligenceGraphResponse {
   nodes: IntelligenceGraphNode[];
   links: IntelligenceGraphLink[];
   has_intelligence: boolean;
+  total_papers?: number;
 }
